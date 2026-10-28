@@ -1,8 +1,13 @@
+import os from "node:os";
 import path from "node:path";
 
 export const env = {
   appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
-  dataDir: process.env.SIGNFLOW_DATA_DIR || path.join(process.cwd(), "data"),
+  dataDir:
+  process.env.SIGNFLOW_DATA_DIR ||
+  (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
+    ? path.join(os.tmpdir(), "signflow")
+    : path.join(process.cwd(), "data")),
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
   signingLinkTtlDays: Number(process.env.SIGNING_LINK_TTL_DAYS || 14),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 5),
