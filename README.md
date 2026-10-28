@@ -31,7 +31,9 @@ The seed creates the **Hart & Co.** workspace on the Pro plan with sample docume
 
 ### Email in development
 
-Without `SMTP_HOST`, SignFlow does not attempt to send mail. Invitations, reminders, verification codes and completion notices are written to a local outbox at **http://localhost:3000/dev/outbox** (enabled when `NODE_ENV` is not `production`). Set `SHOW_DEV_OUTBOX=false` to hide the route. Configure `SMTP_*` in `.env.local` to deliver real email.
+Without `SMTP_HOST`, SignFlow does not attempt to send mail. Invitations, reminders, verification codes and completion notices are written to a local outbox at **http://localhost:3000/dev/outbox** (enabled when `NODE_ENV` is not `production`). Set `SHOW_DEV_OUTBOX=false` to hide the route.
+
+To deliver real email, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` in `.env` or `.env.local`. For Gmail, create an App Password, set `SMTP_HOST=smtp.gmail.com`, and use the same address in `SMTP_FROM`. Port 465 uses implicit SSL; port 587 uses STARTTLS, though some networks block 587. The outbox still records each message's delivery status, including failures.
 
 ## Scripts
 
