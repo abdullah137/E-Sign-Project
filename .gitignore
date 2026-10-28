@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+data
+.env
+.env.local
+*.log
+.DS_Store
+coverage
+public/pdf.worker.min.mjs
+next-env.d.ts
+*.tsbuildinfo

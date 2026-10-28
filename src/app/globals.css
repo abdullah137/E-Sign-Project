@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #f8f9fa;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f3f4f5;
+  --color-surface-muted: #edeeef;
+  --color-border: rgba(18, 20, 23, 0.08);
+  --color-border-strong: rgba(18, 20, 23, 0.12);
+  --color-ink: #121417;
+  --color-ink-secondary: #45474a;
+  --color-slate: #5e6573;
+  --color-placeholder: #8e95a2;
+  --color-gold: #b89558;
+  --color-gold-hover: #a38349;
+  --color-gold-text: #8f7341;
+  --color-danger: #ba1a1a;
+  --color-success-bg: #eaf4ec;
+  --color-success-text: #285d39;
+  --color-warning-bg: #f8eedf;
+  --color-warning-text: #8f7341;
+  --radius-sm: 2px;
+  --radius-default: 4px;
+  --radius-md: 6px;
+  --radius-card: 8px;
+  --radius-modal: 12px;
+  --radius-pill: 9999px;
+  --space-xs: 6px;
+  --space-sm: 12px;
+  --space-md: 20px;
+  --space-lg: 32px;
+  --space-xl: 56px;
+  --gutter-desktop: 24px;
+  --gutter-mobile: 16px;
+  --margin-desktop: 48px;
+  --margin-tablet: 32px;
+  --margin-mobile: 20px;
+  --shadow-float: 0 12px 32px -4px rgba(18, 20, 23, 0.04),
+    0 4px 12px -2px rgba(18, 20, 23, 0.02);
+}
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-manrope), "Manrope", ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 24px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(184, 149, 88, 0.22);
+}
+
+a {
+  color: inherit;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-gold-text);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-hairline bg-surface;
+  }
+
+  .overline {
+    @apply text-[11px] font-semibold uppercase tracking-overline text-slate;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page-container {
+    @apply mx-auto w-full max-w-page px-5 sm:px-8 lg:px-12;
+  }
+
+  .editor-grid {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(18, 20, 23, 0.18) transparent;
+  }
+
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(18, 20, 23, 0.16);
+    border-radius: 999px;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded bg-surface-muted;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
