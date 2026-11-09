@@ -71,7 +71,7 @@ export function SignatureDialog({
     context.lineWidth = 2.4;
     context.lineCap = "round";
     context.lineJoin = "round";
-    context.strokeStyle = "#121417";
+    context.strokeStyle = "#0F172A";
   }, [open]);
 
   if (!open) return null;
@@ -84,7 +84,7 @@ export function SignatureDialog({
     const context = canvas.getContext("2d");
     if (!context) return null;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = "#121417";
+    context.fillStyle = "#0F172A";
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.font = "italic 104px Newsreader, Georgia, 'Times New Roman', serif";
@@ -206,7 +206,7 @@ export function SignatureDialog({
             />
             <div className="mt-3 flex h-[120px] items-center justify-center rounded border border-hairline bg-surface-subtle/40 px-6">
               <span
-                className="max-w-full truncate font-serif text-[40px] italic leading-tight text-ink"
+                className="max-w-full truncate font-signature text-[40px] italic leading-tight text-ink"
                 style={{ fontFamily: "Newsreader, Georgia, 'Times New Roman', serif" }}
               >
                 {typed.trim() || suggestedName || "Your signature"}
@@ -223,7 +223,7 @@ export function SignatureDialog({
           <div>
             <p className="mb-2 text-[12px] text-slate">Draw with a mouse, trackpad, finger or stylus.</p>
             <div className="relative rounded border border-hairline bg-surface">
-              <div className="pointer-events-none absolute inset-x-5 bottom-10 border-b border-dashed border-[rgba(18,20,23,0.14)]" />
+              <div className="pointer-events-none absolute inset-x-5 bottom-10 border-b border-dashed border-hairline-strong" />
               <canvas
                 ref={canvasRef}
                 className="mx-auto block h-[170px] w-full max-w-[560px] touch-none"
@@ -236,7 +236,7 @@ export function SignatureDialog({
                   if (context) {
                     context.beginPath();
                     context.arc(point.x, point.y, 1.2, 0, Math.PI * 2);
-                    context.fillStyle = "#121417";
+                    context.fillStyle = "#0F172A";
                     context.fill();
                   }
                   setHasDrawing(true);

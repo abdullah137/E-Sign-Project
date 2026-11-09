@@ -92,7 +92,7 @@ export function UploadDropzone({ maxUploadMb }: { maxUploadMb: number }) {
             "flex flex-col items-center justify-center rounded-md border border-dashed px-6 py-14 text-center transition-colors sm:py-20",
             dragging
               ? "border-gold bg-warning-bg/40"
-              : "border-hairline-strong bg-surface-subtle/40 hover:border-[rgba(18,20,23,0.22)]",
+              : "border-hairline-strong bg-surface-subtle/40 hover:border-slate/50",
           )}
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface text-slate ring-1 ring-hairline">
@@ -164,7 +164,7 @@ export function UploadDropzone({ maxUploadMb }: { maxUploadMb: number }) {
           </div>
 
           {error ? (
-            <div className="mt-4 rounded border border-[rgba(186,26,26,0.2)] bg-[#FBEAEA] px-3.5 py-3 text-[12.5px] leading-5 text-danger" role="alert">
+            <div className="mt-4 rounded border border-danger/25 bg-danger-bg px-3.5 py-3 text-[12.5px] leading-5 text-danger" role="alert">
               {error}
             </div>
           ) : null}

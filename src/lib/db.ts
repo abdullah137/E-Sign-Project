@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS workspaces (
   brand_display_name TEXT,
   brand_color TEXT,
   brand_logo_asset_id TEXT,
+  law_firm_email TEXT,
+  law_firm_phone TEXT,
+  law_firm_address TEXT,
+  bank_name TEXT,
+  bank_code TEXT,
+  bank_account_name TEXT,
+  bank_account_number TEXT,
+  bank_account_type TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -93,6 +101,7 @@ CREATE TABLE IF NOT EXISTS documents (
   expires_at TEXT,
   void_reason TEXT,
   voided_at TEXT,
+  signing_mode TEXT NOT NULL DEFAULT 'parallel',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -193,7 +202,15 @@ CREATE TABLE IF NOT EXISTS audit_events (
   actor_kind TEXT NOT NULL,
   actor_id TEXT,
   actor_label TEXT,
+  recipient_id TEXT,
+  sequence INTEGER,
   at TEXT NOT NULL,
+  processed_at TEXT,
+  delivery_status TEXT,
+  delivered_at TEXT,
+  correlation_id TEXT,
+  causation_id TEXT,
+  hash_version INTEGER NOT NULL DEFAULT 1,
   ip TEXT,
   user_agent TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -214,11 +231,245 @@ CREATE TABLE IF NOT EXISTS email_outbox (
   recipient_id TEXT,
   status TEXT NOT NULL DEFAULT 'queued',
   error TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at TEXT,
+  next_attempt_at TEXT,
+  provider_message_id TEXT,
   created_at TEXT NOT NULL,
   sent_at TEXT,
   payload_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_created ON email_outbox(created_at);
+
+CREATE TABLE IF NOT EXISTS landlords (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  email_normalized TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  notes TEXT,
+  id_type TEXT,
+  id_number TEXT,
+  law_firm_name TEXT,
+  law_firm_address TEXT,
+  law_firm_phone TEXT,
+  law_firm_email TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(workspace_id, email_normalized)
+);
+CREATE INDEX IF NOT EXISTS idx_landlords_ws ON landlords(workspace_id, name);
+
+CREATE TABLE IF NOT EXISTS landlord_files (
+  id TEXT PRIMARY KEY,
+  landlord_id TEXT NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_landlord_files ON landlord_files(landlord_id, kind);
+
+CREATE TABLE IF NOT EXISTS properties (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  landlord_id TEXT NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  reference TEXT NOT NULL,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'Residential',
+  property_type TEXT NOT NULL,
+  description TEXT,
+  unit_count INTEGER NOT NULL DEFAULT 0,
+  address_line1 TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  postal_code TEXT,
+  bedrooms INTEGER NOT NULL DEFAULT 1,
+  rent_amount_cents INTEGER NOT NULL DEFAULT 0,
+  inquiry_fee_cents INTEGER NOT NULL DEFAULT 0,
+  image_storage_key TEXT,
+  image_mime TEXT,
+  status TEXT NOT NULL DEFAULT 'available',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(workspace_id, reference)
+);
+CREATE INDEX IF NOT EXISTS idx_properties_ws ON properties(workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_properties_landlord ON properties(landlord_id);
+
+CREATE TABLE IF NOT EXISTS property_units (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  unit_number TEXT NOT NULL,
+  unit_type TEXT NOT NULL DEFAULT 'Standard',
+  bedrooms INTEGER NOT NULL DEFAULT 0,
+  occupancy_status TEXT NOT NULL DEFAULT 'available',
+  rent_amount_cents INTEGER NOT NULL DEFAULT 0,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(property_id, unit_number)
+);
+CREATE INDEX IF NOT EXISTS idx_units_property ON property_units(property_id, unit_number);
+CREATE INDEX IF NOT EXISTS idx_units_ws ON property_units(workspace_id, occupancy_status);
+
+CREATE TABLE IF NOT EXISTS unit_files (
+  id TEXT PRIMARY KEY,
+  unit_id TEXT NOT NULL REFERENCES property_units(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_unit_files ON unit_files(unit_id, kind);
+
+CREATE TABLE IF NOT EXISTS inquiries (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  unit_id TEXT REFERENCES property_units(id) ON DELETE SET NULL,
+  landlord_id TEXT NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  applicant_name TEXT NOT NULL,
+  applicant_email TEXT NOT NULL,
+  applicant_email_normalized TEXT NOT NULL,
+  applicant_phone TEXT NOT NULL,
+  current_address TEXT,
+  current_city TEXT,
+  current_state TEXT,
+  reason_for_moving TEXT,
+  marital_status TEXT,
+  children_count INTEGER,
+  employment_status TEXT,
+  employer TEXT,
+  occupation TEXT,
+  income_range TEXT,
+  religion_state TEXT,
+  id_type TEXT,
+  id_number TEXT,
+  employment_address TEXT,
+  occupants_count INTEGER,
+  dependents_count INTEGER,
+  bedrooms_required INTEGER,
+  state_of_origin TEXT,
+  additional_info TEXT,
+  declaration_accepted INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  signature_name TEXT,
+  status TEXT NOT NULL DEFAULT 'DRAFT',
+  tenant_token_hash TEXT UNIQUE,
+  tenant_token_expires_at TEXT,
+  landlord_token_hash TEXT UNIQUE,
+  landlord_token_expires_at TEXT,
+  submitted_at TEXT,
+  reviewed_at TEXT,
+  forwarded_at TEXT,
+  landlord_reviewed_at TEXT,
+  landlord_comment TEXT,
+  lawyer_note TEXT,
+  payment_status TEXT NOT NULL DEFAULT 'not_required',
+  payment_reference TEXT,
+  payment_url TEXT,
+  inquiry_fee_cents INTEGER,
+  payment_fee_cents INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inquiries_ws_status ON inquiries(workspace_id, status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_inquiries_property ON inquiries(property_id);
+CREATE INDEX IF NOT EXISTS idx_inquiries_email ON inquiries(workspace_id, applicant_email_normalized);
+
+CREATE TABLE IF NOT EXISTS inquiry_files (
+  id TEXT PRIMARY KEY,
+  inquiry_id TEXT NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inquiry_files_inquiry ON inquiry_files(inquiry_id, kind);
+
+CREATE TABLE IF NOT EXISTS guarantors (
+  id TEXT PRIMARY KEY,
+  inquiry_id TEXT NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  email_normalized TEXT NOT NULL,
+  relationship TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_guarantors_inquiry ON guarantors(inquiry_id);
+
+CREATE TABLE IF NOT EXISTS agreements (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  inquiry_id TEXT REFERENCES inquiries(id) ON DELETE SET NULL,
+  property_id TEXT REFERENCES properties(id) ON DELETE SET NULL,
+  unit_id TEXT REFERENCES property_units(id) ON DELETE SET NULL,
+  landlord_id TEXT REFERENCES landlords(id) ON DELETE SET NULL,
+  lawyer_name TEXT,
+  lawyer_email TEXT,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  precedent_id TEXT,
+  title TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  rent_amount_cents INTEGER NOT NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agreements_ws ON agreements(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_agreements_inquiry ON agreements(inquiry_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agreements_document ON agreements(document_id);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  agreement_id TEXT REFERENCES agreements(id) ON DELETE SET NULL,
+  property_id TEXT REFERENCES properties(id) ON DELETE SET NULL,
+  recorded_by TEXT NOT NULL REFERENCES users(id),
+  description TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  due_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'DUE',
+  paid_at TEXT,
+  method TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payments_ws_due ON payments(workspace_id, status, due_date);
+
+CREATE TABLE IF NOT EXISTS case_events (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  entity_kind TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  actor_kind TEXT NOT NULL,
+  actor_id TEXT,
+  actor_label TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_case_events_entity ON case_events(entity_kind, entity_id, at);
 
 CREATE TABLE IF NOT EXISTS templates (
   id TEXT PRIMARY KEY,
@@ -281,6 +532,16 @@ CREATE TABLE IF NOT EXISTS invoices (
   issued_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS plan_requests (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  plan TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  requested_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plan_requests_ws ON plan_requests(workspace_id, status);
+
 CREATE TABLE IF NOT EXISTS api_keys (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -310,8 +571,139 @@ const globalForDb = globalThis as unknown as {
   __signflowDbPath?: string;
 };
 
+const AUDIT_COLUMNS: Array<[string, string]> = [
+  ["recipient_id", "TEXT"],
+  ["sequence", "INTEGER"],
+  ["processed_at", "TEXT"],
+  ["delivery_status", "TEXT"],
+  ["delivered_at", "TEXT"],
+  ["correlation_id", "TEXT"],
+  ["causation_id", "TEXT"],
+  ["hash_version", "INTEGER NOT NULL DEFAULT 1"],
+];
+
+const DOCUMENT_COLUMNS: Array<[string, string]> = [
+  ["signing_mode", "TEXT NOT NULL DEFAULT 'parallel'"],
+];
+
+const OUTBOX_COLUMNS: Array<[string, string]> = [
+  ["attempts", "INTEGER NOT NULL DEFAULT 0"],
+  ["last_attempt_at", "TEXT"],
+  ["next_attempt_at", "TEXT"],
+  ["provider_message_id", "TEXT"],
+];
+
+const LANDLORD_COLUMNS: Array<[string, string]> = [
+  ["id_type", "TEXT"],
+  ["id_number", "TEXT"],
+  ["law_firm_name", "TEXT"],
+  ["law_firm_address", "TEXT"],
+  ["law_firm_phone", "TEXT"],
+  ["law_firm_email", "TEXT"],
+];
+
+const WORKSPACE_COLUMNS: Array<[string, string]> = [
+  ["law_firm_email", "TEXT"],
+  ["law_firm_phone", "TEXT"],
+  ["law_firm_address", "TEXT"],
+  ["bank_name", "TEXT"],
+  ["bank_code", "TEXT"],
+  ["bank_account_name", "TEXT"],
+  ["bank_account_number", "TEXT"],
+  ["bank_account_type", "TEXT"],
+];
+
+const PROPERTY_COLUMNS: Array<[string, string]> = [
+  ["category", "TEXT NOT NULL DEFAULT 'Residential'"],
+  ["description", "TEXT"],
+  ["unit_count", "INTEGER NOT NULL DEFAULT 0"],
+  ["inquiry_fee_cents", "INTEGER NOT NULL DEFAULT 0"],
+  ["image_storage_key", "TEXT"],
+  ["image_mime", "TEXT"],
+];
+
+const INQUIRY_COLUMNS: Array<[string, string]> = [
+  ["unit_id", "TEXT"],
+  ["id_type", "TEXT"],
+  ["id_number", "TEXT"],
+  ["employment_address", "TEXT"],
+  ["occupants_count", "INTEGER"],
+  ["dependents_count", "INTEGER"],
+  ["bedrooms_required", "INTEGER"],
+  ["state_of_origin", "TEXT"],
+  ["additional_info", "TEXT"],
+  ["declaration_accepted", "INTEGER NOT NULL DEFAULT 0"],
+  ["payment_status", "TEXT NOT NULL DEFAULT 'not_required'"],
+  ["payment_reference", "TEXT"],
+  ["payment_url", "TEXT"],
+  ["inquiry_fee_cents", "INTEGER"],
+  ["payment_fee_cents", "INTEGER NOT NULL DEFAULT 0"],
+  ["paid_at", "TEXT"],
+];
+
+const AGREEMENT_COLUMNS: Array<[string, string]> = [
+  ["unit_id", "TEXT"],
+  ["lawyer_name", "TEXT"],
+  ["lawyer_email", "TEXT"],
+];
+
+function tableColumns(db: DatabaseSync, table: string): Set<string> {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as Array<{ name: string }>;
+  return new Set(rows.map((row) => row.name));
+}
+
+function ensureColumns(
+  db: DatabaseSync,
+  table: string,
+  columns: Array<[string, string]>,
+): void {
+  const existing = tableColumns(db, table);
+  for (const [name, definition] of columns) {
+    if (!existing.has(name)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
+  }
+}
+
+/**
+ * Applies idempotent upgrades to databases created before the current schema.
+ * Existing audit hashes are preserved: sequence and delivery columns are
+ * ordering/processing metadata and are not part of the original hash payload.
+ */
+export function migrateSchema(db: DatabaseSync): void {
+  ensureColumns(db, "workspaces", WORKSPACE_COLUMNS);
+  ensureColumns(db, "audit_events", AUDIT_COLUMNS);
+  ensureColumns(db, "documents", DOCUMENT_COLUMNS);
+  ensureColumns(db, "email_outbox", OUTBOX_COLUMNS);
+  ensureColumns(db, "landlords", LANDLORD_COLUMNS);
+  ensureColumns(db, "properties", PROPERTY_COLUMNS);
+  ensureColumns(db, "inquiries", INQUIRY_COLUMNS);
+  ensureColumns(db, "agreements", AGREEMENT_COLUMNS);
+
+  db.exec(`
+    UPDATE audit_events
+       SET sequence = (
+         SELECT COUNT(*) FROM audit_events AS earlier
+          WHERE earlier.document_id = audit_events.document_id
+            AND earlier.rowid <= audit_events.rowid
+       )
+     WHERE sequence IS NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_document_sequence
+      ON audit_events(document_id, sequence) WHERE sequence IS NOT NULL;
+
+    UPDATE workspaces SET plan = 'starter' WHERE plan = 'pro';
+    UPDATE workspaces SET plan = 'team' WHERE plan = 'business';
+    UPDATE subscriptions SET plan = 'starter' WHERE plan = 'pro';
+    UPDATE subscriptions SET plan = 'team' WHERE plan = 'business';
+    UPDATE invoices SET plan = 'starter' WHERE plan = 'pro';
+    UPDATE invoices SET plan = 'team' WHERE plan = 'business';
+  `);
+}
+
 export function initSchema(db: DatabaseSync): void {
   db.exec(SCHEMA);
+  migrateSchema(db);
 }
 
 export function createDatabase(filePath: string): DatabaseSync {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SettingsNav } from "@/components/settings/settings-nav";
 
 export const metadata: Metadata = {
-  title: { default: "Settings · SignFlow", template: "%s · SignFlow" },
+  title: { default: "Settings · Juripass", template: "%s · Juripass" },
 };
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

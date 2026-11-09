@@ -6,7 +6,7 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="divide-y divide-[rgba(18,20,23,0.05)]" aria-busy="true" aria-label="Loading documents">
+    <div className="divide-y divide-hairline" aria-busy="true" aria-label="Loading documents">
       {Array.from({ length: rows }).map((_, index) => (
         <div key={index} className="flex items-center gap-4 px-5 py-4">
           <Skeleton className="h-9 w-9 rounded" />

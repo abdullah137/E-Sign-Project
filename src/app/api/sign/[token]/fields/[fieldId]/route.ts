@@ -32,6 +32,7 @@ export async function POST(
         checked: result.refreshed.checked === 1,
         signatureAssetId: result.refreshed.signature_asset_id,
         signatureMode: result.refreshed.signature_mode,
+        recordedAt: result.refreshed.recorded_at,
       },
     });
   } catch (error) {

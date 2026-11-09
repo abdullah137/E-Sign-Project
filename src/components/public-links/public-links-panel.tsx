@@ -107,7 +107,7 @@ export function PublicLinksPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-2xl text-[12.5px] leading-5 text-slate">
           A public link lets someone start a single-recipient template after verifying their email.
-          SignFlow creates the document, sends the signing invitation and keeps the audit trail.
+          Juripass Sign Flow creates the document, sends the signing invitation and keeps the audit trail.
         </p>
         {canManage ? (
           <Button size="sm" onClick={openCreate} disabled={!templates.length}>
@@ -217,7 +217,7 @@ export function PublicLinksPanel({
             <p className="text-[12.5px] font-medium text-ink">How verification works</p>
             <ul className="mt-1.5 space-y-1 text-[12px] leading-5 text-slate">
               <li>1. The visitor enters their name and email on the public page.</li>
-              <li>2. SignFlow emails a six-digit code, valid for ten minutes and one use.</li>
+              <li>2. Juripass emails a six-digit code, valid for ten minutes and one use.</li>
               <li>3. After verification, a draft is created for that person and sent immediately.</li>
               <li>4. Only templates with exactly one recipient can be published this way.</li>
             </ul>

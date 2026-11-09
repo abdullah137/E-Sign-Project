@@ -24,15 +24,20 @@ export function Modal({
 }) {
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !panelRef.current) return;
@@ -54,9 +59,11 @@ export function Modal({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const timer = window.setTimeout(() => {
-      const focusTarget = panelRef.current?.querySelector<HTMLElement>(
-        "[data-autofocus], input, textarea, select, button",
-      );
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusTarget =
+        panel.querySelector<HTMLElement>("[data-autofocus]") ??
+        panel.querySelector<HTMLElement>("input, textarea, select, button");
       focusTarget?.focus();
     }, 20);
     return () => {
@@ -64,7 +71,7 @@ export function Modal({
       document.body.style.overflow = previousOverflow;
       window.clearTimeout(timer);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!mounted || !open) return null;
 
@@ -76,12 +83,12 @@ export function Modal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-4 sm:items-center sm:p-6">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6">
       <button
         type="button"
         aria-label="Close dialog"
         onClick={onClose}
-        className="fixed inset-0 cursor-default bg-[rgba(18,20,23,0.32)] backdrop-blur-[2px]"
+        className="fixed inset-0 cursor-default bg-ink/30 backdrop-blur-[2px]"
         tabIndex={-1}
       />
       <div
@@ -91,13 +98,13 @@ export function Modal({
         aria-labelledby="modal-title"
         aria-describedby={description ? "modal-description" : undefined}
         className={cn(
-          "relative z-10 my-8 w-full rounded-modal border border-hairline bg-surface shadow-modal",
+          "relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full flex-col rounded-modal border border-hairline bg-surface shadow-modal sm:max-h-[calc(100dvh-3rem)]",
           sizes[size],
         )}
       >
-        <div className="flex items-start justify-between gap-6 border-b border-hairline px-6 py-5">
+        <div className="flex shrink-0 items-start justify-between gap-6 border-b border-hairline px-6 py-5">
           <div>
-            <h2 id="modal-title" className="font-serif text-[24px] leading-8 text-ink">
+            <h2 id="modal-title" className="text-[22px] font-bold leading-8 tracking-[-0.01em] text-ink">
               {title}
             </h2>
             {description ? (
@@ -115,9 +122,9 @@ export function Modal({
             <X className="h-4.5 w-4.5" aria-hidden="true" />
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
         {footer ? (
-          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-hairline bg-surface-subtle/60 px-6 py-4">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-hairline bg-surface-subtle/60 px-6 py-4">
             {footer}
           </div>
         ) : null}

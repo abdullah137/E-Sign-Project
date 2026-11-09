@@ -46,14 +46,14 @@ export function TeamPanel({
   currentUserId: string;
   currentRole: string;
   planName: string;
-  seatsIncluded: number;
+  seatsIncluded: number | null;
   seatsUsed: number;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const isOwner = currentRole === "owner";
   const canManage = isOwner || currentRole === "admin";
-  const seatsFull = seatsUsed + invites.length >= seatsIncluded;
+  const seatsFull = seatsIncluded !== null && seatsUsed + invites.length >= seatsIncluded;
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -147,7 +147,9 @@ export function TeamPanel({
             <div>
               <h2 className="text-[15px] font-semibold text-ink">Team access</h2>
               <p className="mt-0.5 text-[12px] leading-5 text-slate">
-                {seatsUsed} of {seatsIncluded} seats used on the {planName} plan
+                {seatsIncluded === null
+                  ? `${seatsUsed} team member${seatsUsed === 1 ? "" : "s"} · unlimited seats on the ${planName} plan`
+                  : `${seatsUsed} of ${seatsIncluded} seats used on the ${planName} plan`}
                 {invites.length ? ` · ${invites.length} pending invitation${invites.length === 1 ? "" : "s"}` : ""}.
               </p>
             </div>
@@ -236,7 +238,7 @@ export function TeamPanel({
                         <button
                           type="button"
                           onClick={() => setRemoveTarget(member)}
-                          className="inline-flex h-8 items-center gap-1.5 rounded px-2 text-[12px] font-medium text-slate hover:bg-[#FBEAEA] hover:text-danger"
+                          className="inline-flex h-8 items-center gap-1.5 rounded px-2 text-[12px] font-medium text-slate hover:bg-danger-bg hover:text-danger"
                         >
                           <UserMinus className="h-3.5 w-3.5" aria-hidden="true" />
                           Remove

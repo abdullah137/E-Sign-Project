@@ -4,8 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
+  BookOpen,
+  Building2,
   ChevronDown,
-  FilePlus2,
+  ClipboardList,
+  CreditCard,
+  FileSignature,
   Files,
   HelpCircle,
   LayoutDashboard,
@@ -15,6 +19,7 @@ import {
   Menu,
   Settings,
   Upload,
+  UsersRound,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -25,6 +30,15 @@ import { Button, buttonStyles } from "@/components/ui/button";
 
 const primaryNav = [
   { label: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
+  { label: "Inquiries", href: "/app/inquiries", icon: ClipboardList },
+  { label: "Properties", href: "/app/properties", icon: Building2 },
+  { label: "Landlords", href: "/app/landlords", icon: UsersRound },
+  { label: "Agreements", href: "/app/agreements", icon: FileSignature },
+  { label: "Payments", href: "/app/payments", icon: CreditCard },
+  { label: "Forms & precedents", href: "/app/precedents", icon: BookOpen },
+];
+
+const signingNav = [
   { label: "New document", href: "/app/documents/new", icon: Upload },
   { label: "All documents", href: "/app/documents", icon: Files },
   { label: "Templates", href: "/app/templates", icon: LayoutTemplate },
@@ -83,7 +97,7 @@ export function AppShell({
           <button
             type="button"
             aria-label="Close navigation"
-            className="absolute inset-0 bg-[rgba(18,20,23,0.34)]"
+            className="absolute inset-0 bg-ink/35"
             onClick={() => setMobileOpen(false)}
           />
           <div className="relative flex h-full w-[286px] max-w-[86vw] flex-col border-r border-hairline bg-surface shadow-float">
@@ -101,7 +115,7 @@ export function AppShell({
       ) : null}
 
       <div className="lg:pl-[248px]">
-        <header className="sticky top-0 z-30 border-b border-hairline bg-[rgba(248,249,250,0.88)] backdrop-blur-md">
+        <header className="sticky top-0 z-30 border-b border-hairline bg-card/85 backdrop-blur-md">
           <div className="flex h-16 items-center gap-3 px-5 sm:px-8 lg:px-10">
             <button
               type="button"
@@ -119,11 +133,11 @@ export function AppShell({
               </p>
             </div>
             <Link
-              href="/app/documents/new"
+              href="/app/inquiries/new"
               className={buttonStyles("primary", "sm", "hidden sm:inline-flex")}
             >
-              <FilePlus2 className="h-4 w-4" aria-hidden="true" />
-              New document
+              <ClipboardList className="h-4 w-4" aria-hidden="true" />
+              New inquiry
             </Link>
             <AccountMenu user={user} planName={workspace.planName} />
           </div>
@@ -161,20 +175,47 @@ function SidebarContent({
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group relative flex min-h-[44px] items-center gap-3 rounded px-3 text-[13.5px] font-medium transition-colors",
+                    "group relative flex min-h-[44px] items-center gap-3 rounded-md px-3 text-[13.5px] font-medium transition-colors duration-150",
                     active
-                      ? "bg-surface-subtle text-ink"
+                      ? "bg-brand-50 text-brand-text"
                       : "text-slate hover:bg-surface-subtle hover:text-ink",
                   )}
                 >
                   {active ? (
-                    <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-gold" />
+                    <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-brand-600" />
                   ) : null}
                   <item.icon
-                    className={cn("h-[18px] w-[18px]", active ? "text-ink" : "text-[#7A808C]")}
+                    className={cn("h-[18px] w-[18px]", active ? "text-brand-text" : "text-slate")}
                     strokeWidth={1.75}
                     aria-hidden="true"
                   />
+                  {item.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-7 px-3">
+          <p className="overline mb-2">Sign Flow</p>
+        </div>
+        <ul className="space-y-0.5">
+          {signingNav.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "group relative flex min-h-[42px] items-center gap-3 rounded-md px-3 text-[13px] transition-colors duration-150",
+                    active ? "bg-brand-50 text-brand-text" : "text-slate hover:bg-surface-subtle hover:text-ink",
+                  )}
+                >
+                  {active ? (
+                    <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-brand-600" />
+                  ) : null}
+                  <item.icon className="h-[17px] w-[17px]" strokeWidth={1.75} aria-hidden="true" />
                   {item.label}
                 </Link>
               </li>
@@ -194,12 +235,12 @@ function SidebarContent({
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group relative flex min-h-[42px] items-center gap-3 rounded px-3 text-[13px] transition-colors",
-                    active ? "text-ink" : "text-slate hover:bg-surface-subtle hover:text-ink",
+                    "group relative flex min-h-[42px] items-center gap-3 rounded-md px-3 text-[13px] transition-colors duration-150",
+                    active ? "bg-brand-50 text-brand-text" : "text-slate hover:bg-surface-subtle hover:text-ink",
                   )}
                 >
                   {active ? (
-                    <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-gold" />
+                    <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-brand-600" />
                   ) : null}
                   <item.icon className="h-[17px] w-[17px]" strokeWidth={1.75} aria-hidden="true" />
                   {item.label}
@@ -310,6 +351,14 @@ function AccountMenu({ user, planName }: { user: ShellUser; planName: string }) 
 
 function sectionLabel(pathname: string): string {
   if (pathname.startsWith("/app/dashboard")) return "Overview";
+  if (pathname === "/app/inquiries/new") return "New inquiry";
+  if (pathname.startsWith("/app/inquiries/")) return "Inquiry";
+  if (pathname.startsWith("/app/inquiries")) return "Inquiries";
+  if (pathname.startsWith("/app/properties")) return "Properties";
+  if (pathname.startsWith("/app/landlords")) return "Landlords";
+  if (pathname.startsWith("/app/agreements")) return "Agreements";
+  if (pathname.startsWith("/app/payments")) return "Payments";
+  if (pathname.startsWith("/app/precedents")) return "Forms & precedents";
   if (pathname === "/app/documents/new") return "New document";
   if (pathname.startsWith("/app/documents/") && pathname.endsWith("/prepare")) return "Prepare";
   if (pathname.startsWith("/app/documents/") && pathname.endsWith("/send")) return "Review & send";

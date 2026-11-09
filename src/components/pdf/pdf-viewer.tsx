@@ -171,7 +171,7 @@ function PdfPage({
     <div
       ref={hostRef}
       data-page={pageNumber}
-      className="relative mx-auto bg-white shadow-[0_1px_2px_rgba(18,20,23,0.06),0_12px_32px_-12px_rgba(18,20,23,0.18)] ring-1 ring-[rgba(18,20,23,0.07)]"
+      className="relative mx-auto bg-white shadow-[0_1px_2px_rgba(18,20,23,0.06),0_12px_32px_-12px_rgba(18,20,23,0.18)] ring-1 ring-hairline"
       style={{ width, aspectRatio: String(ratio) }}
     >
       {!rendered ? (

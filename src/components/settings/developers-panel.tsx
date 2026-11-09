@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Code2, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Check, Code2, Copy, KeyRound, Plus, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
@@ -11,17 +11,21 @@ import { Input, FormField } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/client";
 import { formatDate, formatDateTime } from "@/lib/format";
+import type { OutboxEntry } from "@/lib/email";
 import type { ApiKeySummary } from "@/lib/workspace-admin";
 
 export function DevelopersPanel({
   keys,
+  emails,
   isAdmin,
 }: {
   keys: ApiKeySummary[];
+  emails: OutboxEntry[];
   isAdmin: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -71,8 +75,29 @@ export function DevelopersPanel({
     router.refresh();
   };
 
-  const curl = `curl "$SIGNFLOW_URL/api/v1/documents?limit=10" \\
-  -H "Authorization: Bearer sf_live_..."`;
+  const retry = async (email: OutboxEntry) => {
+    setRetrying(email.id);
+    try {
+      await apiFetch(`/api/workspace/emails/${email.id}/retry`, { method: "POST" });
+      toast({
+        title: "Delivery retried",
+        description: "The latest outbox status is shown below.",
+        variant: "success",
+      });
+      router.refresh();
+    } catch (err) {
+      toast({
+        title: "Retry failed",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "error",
+      });
+    } finally {
+      setRetrying(null);
+    }
+  };
+
+  const curl = `curl "$JURIPASS_URL/api/v1/documents?limit=10" \\
+  -H "Authorization: Bearer jp_live_..."`;
 
   return (
     <div className="space-y-6">
@@ -85,7 +110,8 @@ export function DevelopersPanel({
             <div>
               <h2 className="text-[15px] font-semibold text-ink">API keys</h2>
               <p className="mt-0.5 text-[12px] leading-5 text-slate">
-                Read documents from your workspace with a scoped server key.
+                Read documents from your workspace with a scoped server key. Tenancy agreements
+                appear here as documents once prepared.
               </p>
             </div>
           </div>
@@ -146,6 +172,69 @@ export function DevelopersPanel({
             </ul>
           </details>
         ) : null}
+      </section>
+
+      <section className="card p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-subtle text-slate">
+            <Send className="h-4.5 w-4.5" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold text-ink">Email delivery</h2>
+            <p className="mt-0.5 text-[12px] leading-5 text-slate">
+              Notification history for this workspace. Failed jobs and development outbox messages
+              can be retried without duplicating the underlying document event.
+            </p>
+          </div>
+        </div>
+        {emails.length ? (
+          <ul className="mt-5 divide-y divide-hairline border-t border-hairline">
+            {emails.map((email) => {
+              const canRetry = email.status === "failed" || email.status === "outbox";
+              return (
+                <li key={email.id} className="flex flex-col gap-2 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-[12.5px] font-medium text-ink">{email.subject}</p>
+                      <Badge
+                        tone={
+                          email.status === "sent"
+                            ? "success"
+                            : email.status === "failed"
+                              ? "danger"
+                              : "gold"
+                        }
+                      >
+                        {email.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-slate">
+                      {email.to} · {email.kind.replaceAll("_", " ")} · {formatDateTime(email.createdAt)}
+                      {email.attempts ? ` · ${email.attempts} attempt${email.attempts === 1 ? "" : "s"}` : ""}
+                    </p>
+                    {email.error ? (
+                      <p className="mt-1 truncate text-[10.5px] text-danger">{email.error}</p>
+                    ) : null}
+                  </div>
+                  {canRetry ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => retry(email)}
+                      loading={retrying === email.id}
+                    >
+                      Retry
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-4 rounded border border-hairline bg-surface-subtle/50 px-4 py-3 text-[12px] text-slate">
+            No notification history yet.
+          </p>
+        )}
       </section>
 
       <section className="card p-6">

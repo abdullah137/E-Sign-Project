@@ -89,7 +89,7 @@ export const FIELD_DEFINITIONS: Record<FieldType, FieldDefinition> = {
 };
 
 export const RECIPIENT_COLORS = [
-  { name: "Gold", border: "#B89558", fill: "rgba(184,149,88,0.14)", text: "#7A6132" },
+  { name: "Blue", border: "#2563EB", fill: "rgba(37,99,235,0.12)", text: "#1D4ED8" },
   { name: "Slate", border: "#5E6573", fill: "rgba(94,101,115,0.12)", text: "#454A55" },
   { name: "Olive", border: "#6B7A55", fill: "rgba(107,122,85,0.13)", text: "#4F5C3F" },
   { name: "Clay", border: "#A06A4F", fill: "rgba(160,106,79,0.12)", text: "#7C4E38" },

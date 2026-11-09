@@ -46,7 +46,7 @@ const TONE_STYLES: Record<string, string> = {
   neutral: "bg-surface-subtle text-slate",
   gold: "bg-warning-bg text-gold-text",
   success: "bg-success-bg text-success-text",
-  danger: "bg-[#FBEAEA] text-danger",
+  danger: "bg-danger-bg text-danger",
 };
 
 function metaSummary(event: AuditEventRow): string | null {
@@ -88,7 +88,7 @@ export function AuditTimeline({
         <span
           className={cn(
             "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[10.5px] font-semibold",
-            auditValid ? "bg-success-bg text-success-text" : "bg-[#FBEAEA] text-danger",
+            auditValid ? "bg-success-bg text-success-text" : "bg-danger-bg text-danger",
           )}
         >
           <ShieldCheck className="h-3 w-3" aria-hidden="true" />
@@ -111,7 +111,7 @@ export function AuditTimeline({
             return (
               <li key={event.id} className="relative flex gap-3 pb-5 last:pb-0">
                 {index < events.length - 1 ? (
-                  <span className="absolute left-[13px] top-7 h-[calc(100%-1.25rem)] w-px bg-[rgba(18,20,23,0.08)]" aria-hidden="true" />
+                  <span className="absolute left-[13px] top-7 h-[calc(100%-1.25rem)] w-px bg-hairline" aria-hidden="true" />
                 ) : null}
                 <span
                   className={cn(
@@ -124,14 +124,40 @@ export function AuditTimeline({
                 <div className="min-w-0 flex-1 pt-0.5">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                     <p className="text-[12.5px] font-semibold text-ink">{meta.label}</p>
-                    <time className="tabular text-[10.5px] text-slate" dateTime={event.at}>
+                    <time
+                      className="tabular text-[10.5px] text-slate"
+                      dateTime={event.at}
+                      title={`${new Date(event.at).toISOString()} · sequence ${event.sequence}`}
+                    >
                       {formatDateTime(event.at)}
                     </time>
                   </div>
                   <p className="mt-0.5 text-[11.5px] text-slate">
-                    {event.actor_kind === "system" ? "SignFlow" : event.actor_label || event.actor_kind}
+                    {event.actor_kind === "system" ? "Juripass" : event.actor_label || event.actor_kind}
                     {summary ? <span className="text-placeholder"> · {summary}</span> : null}
                   </p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-placeholder">
+                    <span className="tabular">#{event.sequence}</span>
+                    {event.delivery_status ? (
+                      <span
+                        className={cn(
+                          "rounded-pill px-1.5 py-px font-semibold uppercase tracking-wide",
+                          event.delivery_status === "failed"
+                            ? "bg-danger-bg text-danger"
+                            : event.delivery_status === "sent"
+                              ? "bg-success-bg text-success-text"
+                              : "bg-surface-muted text-slate",
+                        )}
+                      >
+                        {event.delivery_status}
+                      </span>
+                    ) : null}
+                    {event.delivered_at ? (
+                      <span title={`${new Date(event.delivered_at).toISOString()} (UTC)`}>
+                        delivered {formatDateTime(event.delivered_at)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             );

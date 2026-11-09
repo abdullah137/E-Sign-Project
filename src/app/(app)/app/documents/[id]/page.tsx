@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock,
   Download,
   FileCheck2,
   FileText,
@@ -13,13 +14,19 @@ import {
 } from "lucide-react";
 import { requireWorkspace, isAdmin } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { getDocumentDetail, getAuditForDocument } from "@/lib/documents";
+import {
+  getDocumentDetail,
+  getAuditForDocument,
+  retentionDeadline,
+} from "@/lib/documents";
+import { getPlan } from "@/lib/plans";
 import { verifyAuditChain } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { Breadcrumbs } from "@/components/ui/page-header";
 import { StatusBadge, RecipientStatusBadge } from "@/components/ui/badge";
 import { buttonStyles } from "@/components/ui/button";
 import { AuditTimeline } from "@/components/documents/audit-timeline";
+import { LiveRefresh } from "@/components/app/live-refresh";
 import { DocumentActions, RemindButton } from "@/components/documents/document-actions";
 import { formatBytes, formatDate, formatDateTime, relativeTime } from "@/lib/format";
 import type { RecipientStatus } from "@/lib/documents";
@@ -64,9 +71,15 @@ export default async function DocumentDetailPage({
   const signers = detail.recipients.filter((recipient) => recipient.role === "signer");
   const lastActivity = events[events.length - 1]?.at ?? doc.updated_at;
   const canDownloadFinal = doc.status === "COMPLETED" && detail.finalizedFile;
+  const plan = getPlan(ctx.workspace.plan);
+  const retentionEndsAt = retentionDeadline(plan, doc);
+  const retentionLapsed = retentionEndsAt
+    ? Date.now() > new Date(retentionEndsAt).getTime()
+    : false;
 
   return (
     <div className="page-container py-8 sm:py-10">
+      {doc.status === "PENDING" || doc.status === "FINALIZING" ? <LiveRefresh /> : null}
       <Breadcrumbs
         items={[
           { label: "Documents", href: "/app/documents" },
@@ -131,7 +144,7 @@ export default async function DocumentDetailPage({
       </div>
 
       {doc.status === "VOIDED" ? (
-        <div className="mt-6 flex items-start gap-2.5 rounded-card border border-[rgba(186,26,26,0.18)] bg-[#FBEAEA] px-4 py-3.5">
+        <div className="mt-6 flex items-start gap-2.5 rounded-card border border-danger/25 bg-danger-bg px-4 py-3.5">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
           <div>
             <p className="text-[12.5px] font-semibold text-danger">This signing request was withdrawn</p>
@@ -153,12 +166,40 @@ export default async function DocumentDetailPage({
         </div>
       ) : null}
       {doc.status === "FINALIZING" ? (
-        <div className="mt-6 flex items-start gap-2.5 rounded-card border border-[rgba(184,149,88,0.28)] bg-warning-bg/60 px-4 py-3.5">
+        <div className="mt-6 flex items-start gap-2.5 rounded-card border border-gold/30 bg-warning-bg/60 px-4 py-3.5">
           <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-gold-text" aria-hidden="true" />
           <div>
             <p className="text-[12.5px] font-semibold text-ink">All signatures are in — finalizing</p>
             <p className="mt-0.5 text-[12px] leading-5 text-slate">
               The signed PDF is being generated. If this message persists, retry finalization above.
+            </p>
+          </div>
+        </div>
+      ) : null}
+      {retentionEndsAt ? (
+        <div className="mt-6 flex items-start gap-2.5 rounded-card border border-hairline bg-surface-subtle px-4 py-3.5">
+          {retentionLapsed ? (
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+          ) : (
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate" aria-hidden="true" />
+          )}
+          <div>
+            <p className="text-[12.5px] font-semibold text-ink">
+              {retentionLapsed
+                ? "This document is outside your plan's retention window"
+                : `${plan.name} plan retention`}
+            </p>
+            <p className="mt-0.5 text-[12px] leading-5 text-slate">
+              {retentionLapsed
+                ? `Access ended ${formatDateTime(retentionEndsAt)} after ${plan.entitlements.documentRetentionDays} days.`
+                : `Downloads are available until ${formatDateTime(retentionEndsAt)} (${plan.entitlements.documentRetentionDays} days).`}{" "}
+              <Link
+                href="/app/settings/billing"
+                className="font-semibold text-gold-text underline-offset-2 hover:underline"
+              >
+                View plans for unlimited retention
+              </Link>
+              .
             </p>
           </div>
         </div>
@@ -203,7 +244,8 @@ export default async function DocumentDetailPage({
             <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
               <h2 className="font-serif text-[22px] leading-7 text-ink">Recipients</h2>
               <span className="text-[11.5px] text-slate">
-                {signers.length} signer{signers.length === 1 ? "" : "s"} · parallel signing
+                {signers.length} signer{signers.length === 1 ? "" : "s"} ·{" "}
+                {doc.signing_mode === "sequential" ? "sequential signing" : "parallel signing"}
               </span>
             </div>
             {detail.recipients.length === 0 ? (

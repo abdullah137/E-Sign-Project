@@ -65,7 +65,7 @@ export default async function VerifyEmailPage({
         </Link>
       }
     >
-      <div className="flex items-start gap-4 rounded border border-[rgba(186,26,26,0.16)] bg-[#FCF1F1] px-4 py-4">
+      <div className="flex items-start gap-4 rounded border border-danger/25 bg-danger-bg px-4 py-4">
         <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-danger" aria-hidden="true" />
         <p className="text-[13px] leading-6 text-danger">
           If you still need to verify your email, sign in and request a new verification

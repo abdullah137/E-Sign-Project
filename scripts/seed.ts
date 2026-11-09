@@ -1,15 +1,31 @@
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getDb } from "../src/lib/db";
+import { env } from "../src/lib/env";
 import { registerUser } from "../src/lib/account";
 import { hashPassword } from "../src/lib/password";
 import { newId, nowIso, normalizeEmail } from "../src/lib/ids";
 import { createDraftDocument, sendDocument } from "../src/lib/documents";
 import { getPlan } from "../src/lib/plans";
+import {
+  createAgreementFromPrecedent,
+  createInquiry,
+  createLandlord,
+  createPayment,
+  createProperty,
+  forwardToLandlord,
+  landlordDecision,
+  listPayments,
+  markPaymentPaid,
+  reviewInquiry,
+  submitInquiry,
+  type InquirySubmission,
+} from "../src/lib/tenancy";
 
-const DEMO_EMAIL = "demo@signflow.test";
-const TEAMMATE_EMAIL = "maya@signflow.test";
-const PASSWORD = "SignFlow2026!";
+const DEMO_EMAIL = "demo@juripass.test";
+const TEAMMATE_EMAIL = "maya@juripass.test";
+const PASSWORD = "Juripass2026!";
+const WORKSPACE_NAME = "Hart & Lane";
 const reset = process.argv.includes("--reset");
 
 interface SeedField {
@@ -77,7 +93,7 @@ async function buildPdf(options: {
 }): Promise<{ bytes: Buffer; pageCount: number }> {
   const doc = await PDFDocument.create();
   doc.setTitle(options.title);
-  doc.setAuthor("Hart & Co.");
+  doc.setAuthor("Hart & Lane");
   const serifBold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const sans = await doc.embedFont(StandardFonts.Helvetica);
   const sansBold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -89,7 +105,7 @@ async function buildPdf(options: {
   for (let pageIndex = 0; pageIndex < options.pageCount; pageIndex += 1) {
     const page = doc.addPage([612, 792]);
     page.drawRectangle({ x: 54, y: 734, width: 504, height: 3, color: gold });
-    page.drawText("HART & CO.", {
+    page.drawText("HART & LANE", {
       x: 54,
       y: 750,
       size: 11,
@@ -255,7 +271,7 @@ async function ensureUser(
       fullName: input.name,
       email: input.email,
       password: PASSWORD,
-      workspaceName: "Hart & Co.",
+      workspaceName: WORKSPACE_NAME,
     });
     db.prepare("UPDATE users SET email_verified_at = ? WHERE id = ?").run(nowIso(), user.id);
     return { userId: user.id, workspaceId: createdWorkspace };
@@ -321,10 +337,10 @@ async function main() {
   const workspaceId = owner.workspaceId;
   await ensureUser(db, { email: TEAMMATE_EMAIL, name: "Maya Chen", role: "admin" }, workspaceId);
 
-  const plan = getPlan("pro");
+  const plan = getPlan("starter");
   db.prepare(
     "UPDATE workspaces SET name = ?, plan = ?, brand_display_name = ?, brand_color = ? WHERE id = ?",
-  ).run("Hart & Co.", plan.id, "Hart & Co.", "#B89558", workspaceId);
+  ).run(WORKSPACE_NAME, plan.id, WORKSPACE_NAME, "#2563EB", workspaceId);
   db.prepare(
     `INSERT INTO subscriptions (workspace_id, plan, status, renews_at, updated_at)
      VALUES (?, ?, 'active', ?, ?)
@@ -332,78 +348,78 @@ async function main() {
   ).run(workspaceId, plan.id, new Date(Date.now() + 30 * 86_400_000).toISOString(), nowIso());
   db.prepare(
     "INSERT INTO invoices (id, workspace_id, plan, amount_cents, status, issued_at) VALUES (?, ?, ?, ?, 'paid', ?)",
-  ).run(newId("inv"), workspaceId, plan.id, plan.priceMonthly * 100, nowIso());
+  ).run(newId("inv"), workspaceId, plan.id, Math.round(plan.priceMonthly * 100), nowIso());
 
-  const consultingPdf = await buildPdf({
-    title: "Consulting agreement",
-    subtitle: "Prepared for Northwind Studio",
+  const tenancyPdf = await buildPdf({
+    title: "Residential tenancy agreement",
+    subtitle: "21 Elm Court · Draft",
     body: [
-      "This consulting agreement is entered into between Hart & Co. and Northwind Studio for design and research services beginning on 1 November 2026.",
-      "The engagement covers product discovery, interface design and a written research summary. Work will be delivered in two phases, with a review at the end of each phase.",
-      "Fees are billed monthly at the rate set out in the accompanying statement of work. Invoices are payable within fourteen days of receipt.",
-      "Confidentiality",
-      "Both parties will keep commercial and technical information confidential, use it only for the purposes of this engagement, and return or destroy it on request.",
+      "This residential tenancy agreement is entered into between Amara Okafor, as landlord, and Lena Fischer, as tenant, for the property at 21 Elm Court, Austin, Texas.",
+      "The tenancy begins on 1 December 2026 and continues for twelve months unless ended in accordance with this agreement or applicable law.",
+      "Rent is payable monthly in advance. The tenant will keep the property in good condition, report repairs promptly and observe the building rules.",
+      "Obligations",
+      "The landlord will maintain the structure, installations and common areas, return the deposit subject to a documented schedule, and give notice of any inspection.",
     ],
     pageCount: 2,
     signatureLabels: [
-      ["Northwind Studio", "Date", "Name"],
-      ["Northwind Studio", "Date", "Initials"],
+      ["Tenant", "Date", "Name"],
+      ["Landlord", "Date", "Initials"],
     ],
   });
 
-  const ndaPdf = await buildPdf({
-    title: "Mutual NDA",
-    subtitle: "Northwind Studio · Confidential",
+  const harbourPdf = await buildPdf({
+    title: "Residential tenancy agreement",
+    subtitle: "4 Harbour View · Hart & Lane",
     body: [
-      "This mutual non-disclosure agreement protects information exchanged between Hart & Co. and Northwind Studio while evaluating a potential collaboration.",
-      "Each party may disclose business, product and technical information in written or oral form. The receiving party will protect it with at least reasonable care.",
-      "The obligations survive for three years from the date of disclosure and do not apply to information that is publicly available or independently developed.",
-      "Exclusions",
-      "Confidential information does not include material the receiving party can show it already knew, received from a third party without restriction, or developed without reference to the disclosure.",
+      "This residential tenancy agreement covers the property at 4 Harbour View, Portland, Oregon, made between Northwind Holdings and Priya Raman.",
+      "The tenancy runs for twelve months from the start date recorded on the signing page. Rent and the deposit are set out in the schedule.",
+      "The tenant will use the property as a private residence, keep it clean and report any damage or required repair without delay.",
+      "Guarantee",
+      "A guarantor may be asked to acknowledge the tenancy. Any guarantee is recorded separately and does not change the tenant's obligations.",
     ],
     pageCount: 1,
-    signatureLabels: [["Northwind Studio", "Hart & Co.", "Date"]],
+    signatureLabels: [["Tenant", "Guarantor", "Landlord"]],
   });
 
-  const vendorPdf = await buildPdf({
-    title: "Vendor services agreement",
-    subtitle: "Meridian Supply · Operations",
+  const leasePdf = await buildPdf({
+    title: "Company lease",
+    subtitle: "Unit 7, Kingsway · Northwind Holdings",
     body: [
-      "This agreement sets out the terms under which Meridian Supply will provide fulfilment and logistics services to Hart & Co. from December 2026.",
-      "Meridian will maintain accurate inventory records, dispatch orders within two business days, and notify Hart & Co. of any material disruption.",
-      "Either party may terminate for convenience with thirty days' written notice. Fees for work completed remain payable.",
-      "Insurance",
-      "Meridian will maintain general liability and cargo insurance throughout the term and provide certificates on request.",
+      "This company lease lets Unit 7, Kingsway Business Park to Northwind Holdings for use as an office, on the terms set out below.",
+      "The tenant will pay rent quarterly in advance, maintain appropriate insurance and comply with the park's operating rules.",
+      "Either party may terminate for material breach after written notice and a reasonable opportunity to remedy the breach.",
+      "Permitted use",
+      "The premises may be used for office and light administrative work only. Any change of use requires the landlord's written consent.",
     ],
     pageCount: 2,
     signatureLabels: [
-      ["Meridian Supply", "Hart & Co.", "Date"],
-      ["Meridian Supply", "Hart & Co.", "Date"],
+      ["Tenant", "Landlord", "Date"],
+      ["Tenant", "Landlord", "Date"],
     ],
   });
 
   const now = nowIso();
   const drafts = [
     {
-      title: "Consulting agreement — October",
-      message: "Please review and sign before the kickoff call on Monday.",
-      pdf: consultingPdf,
-      fileName: "consulting-agreement.pdf",
-      pageCount: consultingPdf.pageCount,
+      title: "Residential tenancy — 21 Elm Court",
+      message: "Draft for Lena Fischer. Review the clauses before sending.",
+      pdf: tenancyPdf,
+      fileName: "residential-tenancy-21-elm.pdf",
+      pageCount: tenancyPdf.pageCount,
     },
     {
-      title: "Mutual NDA — Northwind",
-      message: "Sharing this before our product workshop. Signature only — no initials needed.",
-      pdf: ndaPdf,
-      fileName: "mutual-nda.pdf",
-      pageCount: ndaPdf.pageCount,
+      title: "Residential tenancy — 4 Harbour View",
+      message: "Prepared for Priya Raman. Signature and date only.",
+      pdf: harbourPdf,
+      fileName: "residential-tenancy-4-harbour.pdf",
+      pageCount: harbourPdf.pageCount,
     },
     {
-      title: "Vendor services agreement — Meridian",
+      title: "Company lease — Unit 7, Kingsway",
       message: "Both signatories are on this copy. Thank you.",
-      pdf: vendorPdf,
-      fileName: "vendor-services.pdf",
-      pageCount: vendorPdf.pageCount,
+      pdf: leasePdf,
+      fileName: "company-lease-kingsway.pdf",
+      pageCount: leasePdf.pageCount,
     },
   ];
 
@@ -422,10 +438,10 @@ async function main() {
     });
     db.prepare("UPDATE documents SET message = ? WHERE id = ?").run(entry.message, doc.id);
 
-    if (entry.title.startsWith("Consulting")) {
+    if (entry.title.startsWith("Residential tenancy — 21")) {
       const rcp = insertRecipient(db, doc.id, {
-        name: "Amelia Hart",
-        email: "amelia@northwind.studio",
+        name: "Lena Fischer",
+        email: "lena.fischer@example.com",
         order: 1,
       });
       insertFields(db, doc.id, [
@@ -439,10 +455,10 @@ async function main() {
       continue;
     }
 
-    if (entry.title.startsWith("Mutual")) {
+    if (entry.title.startsWith("Residential tenancy — 4")) {
       const rcp = insertRecipient(db, doc.id, {
-        name: "Amelia Hart",
-        email: "amelia@northwind.studio",
+        name: "Priya Raman",
+        email: "priya.raman@example.com",
         order: 1,
       });
       insertFields(db, doc.id, [
@@ -464,13 +480,13 @@ async function main() {
     }
 
     const rcp1 = insertRecipient(db, doc.id, {
-      name: "Amelia Hart",
-      email: "amelia@northwind.studio",
+      name: "Theo Marsh",
+      email: "theo@northwind.example",
       order: 1,
     });
     const rcp2 = insertRecipient(db, doc.id, {
-      name: "Jonas Weber",
-      email: "jonas@meridian.supply",
+      name: "Amara Okafor",
+      email: "amara.okafor@example.com",
       order: 2,
     });
     insertFields(db, doc.id, [
@@ -497,14 +513,306 @@ async function main() {
     "INSERT INTO invoices (id, workspace_id, plan, amount_cents, status, issued_at) VALUES (?, ?, ?, ?, 'paid', ?)",
   ).run(newId("inv"), workspaceId, "pro", 1900, new Date(Date.now() - 32 * 86_400_000).toISOString());
 
+  console.log("\nTenancy demo");
+  console.log("─".repeat(72));
+
+  const okafor = createLandlord(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    name: "Amara Okafor",
+    email: "amara.okafor@example.com",
+    phone: "+1 512 555 0142",
+    notes: "Owns three rental units. Prefers to decide by email.",
+  });
+  const northwind = createLandlord(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    name: "Theo Marsh",
+    email: "theo@northwind.example",
+    phone: "+1 503 555 0188",
+    notes: "Northwind Holdings — office and residential portfolio.",
+  });
+
+  const oakStreet = createProperty(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    landlordId: okafor.id,
+    reference: "OAK-12",
+    name: "12 Oak Street",
+    propertyType: "House",
+    addressLine1: "12 Oak Street",
+    city: "Austin",
+    state: "TX",
+    postalCode: "78701",
+    bedrooms: 3,
+    rentAmountCents: 285_000,
+    status: "available",
+  });
+  const harbourView = createProperty(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    landlordId: northwind.id,
+    reference: "HBR-4",
+    name: "4 Harbour View",
+    propertyType: "Apartment",
+    addressLine1: "4 Harbour View",
+    city: "Portland",
+    state: "OR",
+    postalCode: "97209",
+    bedrooms: 2,
+    rentAmountCents: 320_000,
+    status: "available",
+  });
+  const kingsway = createProperty(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    landlordId: northwind.id,
+    reference: "KSW-7",
+    name: "Unit 7, Kingsway",
+    propertyType: "Office",
+    addressLine1: "Kingsway Business Park, Unit 7",
+    city: "Portland",
+    state: "OR",
+    postalCode: "97204",
+    bedrooms: 0,
+    rentAmountCents: 540_000,
+    status: "maintenance",
+  });
+
+  const baseSubmission = (name: string): InquirySubmission => ({
+    currentAddress: "18 Willow Lane, Austin, TX",
+    currentCity: "Austin",
+    currentState: "TX",
+    reasonForMoving: "The current lease ends soon and the household needs a home closer to work.",
+    maritalStatus: "Married",
+    childrenCount: 1,
+    employmentStatus: "Employed full-time",
+    employer: "Brightline Health",
+    occupation: "Nurse practitioner",
+    incomeRange: "60,000 – 99,999",
+    religionState: "Texas",
+    notes: null,
+    signatureName: name,
+    guarantors: [
+      { name: "Michael Fischer", email: "michael.fischer@example.com", relationship: "Father" },
+    ],
+  });
+
+  async function submittedInquiry(input: {
+    propertyId: string;
+    name: string;
+    email: string;
+    phone: string;
+    lawyerNote?: string | null;
+    submission?: Partial<InquirySubmission>;
+  }): Promise<{ id: string; link: string }> {
+    const created = createInquiry(db, {
+      workspaceId,
+      userId: owner.userId,
+      userLabel: "Daniel Okafor",
+      propertyId: input.propertyId,
+      applicantName: input.name,
+      applicantEmail: input.email,
+      applicantPhone: input.phone,
+      lawyerNote: input.lawyerNote ?? null,
+    });
+    const token = created.link.split("/inquiry/")[1];
+    await submitInquiry(db, {
+      rawToken: token,
+      submission: { ...baseSubmission(input.name), ...input.submission },
+      ip: "127.0.0.1",
+      userAgent: "Seed demo",
+    });
+    return { id: created.inquiry.id, link: created.link };
+  }
+
+  const awaitingForm = createInquiry(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    propertyId: harbourView.id,
+    applicantName: "Lena Fischer",
+    applicantEmail: "lena.fischer@example.com",
+    applicantPhone: "+1 512 555 0104",
+    lawyerNote: "Send the form today; lease ends in six weeks.",
+  });
+  console.log(`  Draft inquiry   Lena Fischer → ${awaitingForm.link}`);
+
+  await submittedInquiry({
+    propertyId: oakStreet.id,
+    name: "Priya Raman",
+    email: "priya.raman@example.com",
+    phone: "+1 512 555 0177",
+    lawyerNote: "Strong application. Awaiting initial review.",
+  });
+
+  const landlordPending = await submittedInquiry({
+    propertyId: oakStreet.id,
+    name: "Daniel Mwangi",
+    email: "daniel.mwangi@example.com",
+    phone: "+1 512 555 0181",
+    submission: { incomeRange: "100,000 – 149,999", childrenCount: 2 },
+  });
+  reviewInquiry(db, {
+    workspaceId,
+    inquiryId: landlordPending.id,
+    decision: "approve",
+    note: "Income and references check out. Forwarding to the landlord.",
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  const landlordLink = forwardToLandlord(db, {
+    workspaceId,
+    inquiryId: landlordPending.id,
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  console.log(`  Landlord review Daniel Mwangi → ${landlordLink.link}`);
+
+  const approved = await submittedInquiry({
+    propertyId: oakStreet.id,
+    name: "Sofia Alvarez",
+    email: "sofia.alvarez@example.com",
+    phone: "+1 512 555 0192",
+    submission: {
+      maritalStatus: "Single",
+      childrenCount: 0,
+      employmentStatus: "Self-employed",
+      employer: "Alvarez Studio",
+      occupation: "Designer",
+      incomeRange: "100,000 – 149,999",
+      guarantors: [
+        { name: "Elena Alvarez", email: "elena.alvarez@example.com", relationship: "Mother" },
+      ],
+    },
+  });
+  reviewInquiry(db, {
+    workspaceId,
+    inquiryId: approved.id,
+    decision: "approve",
+    note: "Approved. Guarantor details provided.",
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  const approvedLink = forwardToLandlord(db, {
+    workspaceId,
+    inquiryId: approved.id,
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  landlordDecision(db, {
+    rawToken: approvedLink.link.split("/landlord/")[1],
+    decision: "approve",
+    comment: "Happy to proceed with Sofia. Please send the agreement for signature.",
+    ip: "127.0.0.1",
+    userAgent: "Seed demo",
+  });
+  const agreement = await createAgreementFromPrecedent(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    userEmail: DEMO_EMAIL,
+    inquiryId: approved.id,
+    precedentId: "residential-tenancy",
+    startDate: "2025-12-01",
+    endDate: "2026-11-30",
+  });
+  const agreementLinks = await sendDocument(db, {
+    documentId: agreement.documentId,
+    workspaceId,
+    actor: { id: owner.userId, label: "Daniel Okafor", email: DEMO_EMAIL },
+    expiresInDays: 21,
+  });
+  for (const link of agreementLinks.links) {
+    console.log(`  Signing order   ${agreement.documentId} → ${link.name} <${link.email}>`);
+    console.log(`                  ${link.link}`);
+  }
+
+  const payments = listPayments(db, workspaceId);
+  const firstRent = payments.find((payment) => payment.agreement_id === agreement.agreementId);
+  if (firstRent) {
+    markPaymentPaid(db, {
+      workspaceId,
+      paymentId: firstRent.id,
+      method: "Bank transfer",
+      note: "Cleared offline — reference OAK-12-1201.",
+      actor: { id: owner.userId, label: "Daniel Okafor" },
+    });
+  }
+  createPayment(db, {
+    workspaceId,
+    userId: owner.userId,
+    userLabel: "Daniel Okafor",
+    agreementId: agreement.agreementId,
+    description: "Security deposit — 12 Oak Street",
+    amountCents: 285_000,
+    dueDate: "2026-11-20",
+  });
+  console.log(`  Agreement       ${agreement.agreementId} (rental + deposit recorded)`);
+
+  const declinedByLandlord = await submittedInquiry({
+    propertyId: harbourView.id,
+    name: "Marcus Bell",
+    email: "marcus.bell@example.com",
+    phone: "+1 503 555 0126",
+    submission: {
+      currentAddress: "220 Cedar Avenue, Portland, OR",
+      currentCity: "Portland",
+      currentState: "OR",
+      incomeRange: "40,000 – 59,999",
+    },
+  });
+  reviewInquiry(db, {
+    workspaceId,
+    inquiryId: declinedByLandlord.id,
+    decision: "approve",
+    note: "Forwarding so the landlord can weigh the income range.",
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  const declineLink = forwardToLandlord(db, {
+    workspaceId,
+    inquiryId: declinedByLandlord.id,
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  landlordDecision(db, {
+    rawToken: declineLink.link.split("/landlord/")[1],
+    decision: "decline",
+    comment: "Income is below the level we need for this property.",
+    ip: "127.0.0.1",
+    userAgent: "Seed demo",
+  });
+
+  const lawyerDeclined = await submittedInquiry({
+    propertyId: kingsway.id,
+    name: "Aisha Bello",
+    email: "aisha.bello@example.com",
+    phone: "+1 512 555 0139",
+    submission: {
+      employmentStatus: "Student",
+      employer: null,
+      occupation: "Postgraduate researcher",
+      incomeRange: "Under 20,000",
+      guarantors: [],
+    },
+  });
+  reviewInquiry(db, {
+    workspaceId,
+    inquiryId: lawyerDeclined.id,
+    decision: "decline",
+    note: "No guarantor and the property is not currently available.",
+    actor: { id: owner.userId, label: "Daniel Okafor" },
+  });
+  console.log("  Inquiries       6 seeded across draft, review, landlord and declined states");
+
   console.log("\n" + "─".repeat(72));
   console.log("Demo accounts");
   console.log(`  Owner   ${DEMO_EMAIL} / ${PASSWORD}`);
   console.log(`  Admin   ${TEAMMATE_EMAIL} / ${PASSWORD}`);
   console.log(`  Plan    ${plan.name}`);
-  console.log(`  Data    ${path.join(process.cwd(), "data")}`);
+  console.log(`  Data    ${path.resolve(env.dataDir)}`);
   console.log("─".repeat(72));
-  console.log("Start the app with `npm run dev`, then sign in or open a signing link.\n");
+  console.log("Start the app with `npm run dev`, then sign in or open a public link above.\n");
 }
 
 main().catch((error) => {

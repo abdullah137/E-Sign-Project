@@ -49,6 +49,7 @@ export function SendReview({
   senderName,
   workspaceName,
   documentSha256,
+  signingMode,
 }: {
   documentId: string;
   title: string;
@@ -62,6 +63,7 @@ export function SendReview({
   senderName: string;
   workspaceName: string;
   documentSha256: string;
+  signingMode: "parallel" | "sequential";
 }) {
   const router = useRouter();
   const [message, setMessage] = useState(initialMessage ?? "");
@@ -206,7 +208,7 @@ export function SendReview({
                       "shrink-0 rounded-pill px-2 py-0.5 text-[10.5px] font-semibold",
                       recipient.fieldCount > 0
                         ? "bg-success-bg text-success-text"
-                        : "bg-[#FBEAEA] text-danger",
+                        : "bg-danger-bg text-danger",
                     )}
                   >
                     {recipient.fieldCount} field{recipient.fieldCount === 1 ? "" : "s"}
@@ -217,7 +219,9 @@ export function SendReview({
           </ul>
           <p className="mt-4 flex items-center gap-1.5 text-[11.5px] text-slate">
             <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-            Signing is parallel in this version. Every recipient can sign as soon as invitations are sent.
+            {signingMode === "sequential"
+              ? "Signing is sequential. Only the first signer is invited now; each later signer is emailed after the previous one signs."
+              : "Signing is parallel in this version. Every recipient can sign as soon as invitations are sent."}
           </p>
         </section>
 
@@ -271,7 +275,7 @@ export function SendReview({
         <div className="rounded-card border border-hairline bg-surface p-5">
           <p className="overline">Send review</p>
           {blocking ? (
-            <div className="mt-3 rounded border border-[rgba(186,26,26,0.2)] bg-[#FBEAEA] px-3 py-2.5">
+            <div className="mt-3 rounded border border-danger/25 bg-danger-bg px-3 py-2.5">
               <p className="text-[12px] font-semibold text-danger">
                 {issues.length} issue{issues.length === 1 ? "" : "s"} to resolve
               </p>
@@ -312,7 +316,9 @@ export function SendReview({
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-slate">Signing order</dt>
-              <dd className="font-medium text-ink">Parallel</dd>
+              <dd className="font-medium text-ink">
+                {signingMode === "sequential" ? "Sequential" : "Parallel"}
+              </dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-slate">Expires</dt>

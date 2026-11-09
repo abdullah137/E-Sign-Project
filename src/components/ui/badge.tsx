@@ -5,18 +5,18 @@ type Tone = "neutral" | "gold" | "success" | "danger" | "muted";
 
 const toneClasses: Record<Tone, string> = {
   neutral: "bg-surface-muted text-ink-secondary",
-  gold: "bg-warning-bg text-warning-text",
+  gold: "bg-brand-50 text-brand-text",
   success: "bg-success-bg text-success-text",
-  danger: "bg-[#FBEAEA] text-danger",
+  danger: "bg-danger-bg text-danger",
   muted: "bg-surface-subtle text-slate",
 };
 
 const toneDot: Record<Tone, string> = {
   neutral: "bg-slate",
-  gold: "bg-gold",
-  success: "bg-[#3E7B51]",
+  gold: "bg-brand-600",
+  success: "bg-success-text",
   danger: "bg-danger",
-  muted: "bg-[#99A0AC]",
+  muted: "bg-placeholder",
 };
 
 const documentStatusMap: Record<

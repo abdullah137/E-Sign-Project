@@ -2,22 +2,23 @@ import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "secondary" | "accent" | "ghost" | "danger" | "subtle";
+type Variant = "primary" | "secondary" | "accent" | "ghost" | "danger" | "subtle" | "dark";
 type Size = "sm" | "md" | "lg" | "icon";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-ink text-white border border-transparent hover:bg-[#24282F] disabled:hover:bg-ink",
+    "bg-brand-600 text-white border border-transparent rounded-pill hover:bg-brand-700 hover:shadow-blue disabled:hover:bg-brand-600 disabled:hover:shadow-none",
   secondary:
-    "bg-surface text-ink border border-[rgba(18,20,23,0.12)] hover:bg-surface-subtle",
+    "bg-card text-ink border border-hairline-strong rounded-md hover:bg-surface-subtle",
   accent:
-    "bg-gold text-white border border-transparent hover:bg-gold-hover disabled:hover:bg-gold",
+    "bg-brand-600 text-white border border-transparent rounded-pill hover:bg-brand-700 hover:shadow-blue disabled:hover:bg-brand-600 disabled:hover:shadow-none",
+  dark: "bg-btn-dark text-btn-dark-text border border-transparent rounded-md hover:opacity-90",
   ghost:
-    "bg-transparent text-slate border border-transparent hover:bg-surface-subtle hover:text-ink",
+    "bg-transparent text-slate border border-transparent rounded-md hover:bg-surface-subtle hover:text-ink",
   danger:
-    "bg-danger text-white border border-transparent hover:bg-[#9E1515] disabled:hover:bg-danger",
+    "bg-danger text-white border border-transparent rounded-md hover:brightness-90 disabled:hover:brightness-100",
   subtle:
-    "bg-surface-subtle text-ink border border-transparent hover:bg-surface-muted",
+    "bg-surface-subtle text-ink border border-transparent rounded-md hover:bg-surface-muted",
 };
 
 const sizeClasses: Record<Size, string> = {
@@ -35,7 +36,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 export function buttonStyles(variant: Variant = "primary", size: Size = "md", className = "") {
   return cn(
-    "inline-flex select-none items-center justify-center whitespace-nowrap rounded font-medium transition-colors duration-160 disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex select-none items-center justify-center whitespace-nowrap font-medium transition-[background-color,border-color,color,box-shadow] duration-150 disabled:cursor-not-allowed disabled:opacity-50",
     variantClasses[variant],
     sizeClasses[size],
     className,

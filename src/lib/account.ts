@@ -5,6 +5,8 @@ import { queueEmail, appLink } from "./email";
 import { transaction } from "./db";
 import { ConflictError, ValidationError } from "./errors";
 import { isValidEmail } from "./field-types";
+import { parseBrandLogoDataUrl, setBrandLogo } from "./brand-logo";
+import { validateBankDetails } from "./workspace-admin";
 
 export type AuthTokenKind = "verify_email" | "reset_password";
 
@@ -50,15 +52,15 @@ export async function sendVerificationEmail(
   queueEmail(db, {
     kind: "verify_email",
     to: user.email,
-    subject: "Verify your SignFlow email address",
+    subject: "Verify your Juripass email address",
     heading: "Confirm your email address",
     intro: [
-      `Welcome to SignFlow, ${user.full_name || "there"}.`,
-      "Verify your email address to create workspaces, send documents and track signatures.",
+      `Welcome to Juripass, ${user.full_name || "there"}.`,
+      "Verify your email address to set up your workspace, screen tenants and send agreements for signature.",
       "This link expires in 24 hours and can only be used once.",
     ],
     cta: { label: "Verify email", url: link },
-    footnote: "If you did not create a SignFlow account, you can ignore this message.",
+    footnote: "If you did not create a Juripass account, you can ignore this message.",
     meta: { link },
   });
   return link;
@@ -77,10 +79,10 @@ export async function sendPasswordResetEmail(
   queueEmail(db, {
     kind: "reset_password",
     to: user.email,
-    subject: "Reset your SignFlow password",
+    subject: "Reset your Juripass password",
     heading: "Choose a new password",
     intro: [
-      `Hello ${user.full_name || "there"}, we received a request to reset the password for your SignFlow account.`,
+      `Hello ${user.full_name || "there"}, we received a request to reset the password for your Juripass account.`,
       "This link expires in one hour and can only be used once. If you did not request a reset, no action is required.",
     ],
     cta: { label: "Reset password", url: link },
@@ -105,6 +107,15 @@ export function registerUser(
     email: string;
     password: string;
     workspaceName?: string;
+    lawFirmEmail?: string;
+    lawFirmPhone?: string;
+    lawFirmAddress?: string;
+    lawFirmLogo?: string;
+    bankName?: string;
+    bankCode?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+    bankAccountType?: string;
     inviteToken?: string;
   },
 ): { user: RegisteredUser; workspaceId: string } {
@@ -136,6 +147,17 @@ export function registerUser(
   const workspaceId = invite ? invite.workspace_id : newId("wsp");
   const now = nowIso();
   const passwordHash = hashPassword(input.password);
+  const brandLogo = !invite && input.lawFirmLogo ? parseBrandLogoDataUrl(input.lawFirmLogo) : null;
+  const bankDetails =
+    !invite && input.bankName && input.bankAccountNumber
+      ? validateBankDetails({
+          bankName: input.bankName,
+          bankCode: input.bankCode ?? null,
+          accountName: input.bankAccountName ?? "",
+          accountNumber: input.bankAccountNumber,
+          accountType: input.bankAccountType ?? "",
+        })
+      : null;
   transaction(db, () => {
     db.prepare(
       `INSERT INTO users (id, full_name, email, email_normalized, password_hash, created_at, updated_at)
@@ -152,9 +174,24 @@ export function registerUser(
       const workspaceName =
         input.workspaceName?.trim() || `${input.fullName.trim().split(/\s+/)[0] || "My"} workspace`;
       db.prepare(
-        `INSERT INTO workspaces (id, name, owner_id, plan, created_at)
-         VALUES (?, ?, ?, 'free', ?)`,
-      ).run(workspaceId, workspaceName, userId, now);
+        `INSERT INTO workspaces
+          (id, name, owner_id, plan, law_firm_email, law_firm_phone, law_firm_address,
+           bank_name, bank_code, bank_account_name, bank_account_number, bank_account_type, created_at)
+         VALUES (?, ?, ?, 'free', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        workspaceId,
+        workspaceName,
+        userId,
+        input.lawFirmEmail?.trim() || null,
+        input.lawFirmPhone?.trim() || null,
+        input.lawFirmAddress?.trim() || null,
+        bankDetails?.bankName ?? null,
+        bankDetails?.bankCode ?? null,
+        bankDetails?.accountName ?? null,
+        bankDetails?.accountNumber ?? null,
+        bankDetails?.accountType ?? null,
+        now,
+      );
       db.prepare(
         `INSERT INTO memberships (id, workspace_id, user_id, role, status, created_at)
          VALUES (?, ?, ?, 'owner', 'active', ?)`,
@@ -163,6 +200,7 @@ export function registerUser(
         `INSERT INTO subscriptions (workspace_id, plan, status, updated_at)
          VALUES (?, 'free', 'active', ?)`,
       ).run(workspaceId, now);
+      if (brandLogo) setBrandLogo(db, workspaceId, brandLogo);
     }
   });
 

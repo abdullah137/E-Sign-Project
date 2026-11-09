@@ -19,7 +19,7 @@ export function Avatar({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full border border-[rgba(184,149,88,0.35)] bg-warning-bg font-semibold tracking-wide text-gold-text",
+        "inline-flex shrink-0 items-center justify-center rounded-full border border-gold/30 bg-warning-bg font-semibold tracking-wide text-gold-text",
         sizes[size],
         className,
       )}

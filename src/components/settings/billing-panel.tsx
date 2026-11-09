@@ -10,11 +10,13 @@ import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/client";
 import { formatDate } from "@/lib/format";
-import { PLANS, type PlanDefinition } from "@/lib/plans";
+import { formatMoney } from "@/lib/money";
+import { PLANS, formatPlanPrice, type PlanDefinition } from "@/lib/plans";
 
 export interface BillingView {
   plan: PlanDefinition;
   subscription: { status: string; renewsAt: string | null };
+  pendingRequest: { plan: string; status: string; requestedAt: string } | null;
   invoices: Array<{
     id: string;
     plan: string;
@@ -23,7 +25,7 @@ export interface BillingView {
     issuedAt: string;
   }>;
   seatsUsed: number;
-  seatsIncluded: number;
+  seatsIncluded: number | null;
   documentsThisMonth: number;
 }
 
@@ -35,30 +37,52 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
   const [error, setError] = useState<string | null>(null);
 
   const current = billing.plan;
-  const quota = current.documentsPerMonth;
-  const quotaPercent = Math.min(100, Math.round((billing.documentsThisMonth / quota) * 100));
+  const quota = current.entitlements.documentsPerMonth;
+  const quotaPercent =
+    quota === null ? 0 : Math.min(100, Math.round((billing.documentsThisMonth / quota) * 100));
+  const pendingPlan = billing.pendingRequest
+    ? PLANS[billing.pendingRequest.plan as keyof typeof PLANS]
+    : null;
 
   const choose = async () => {
     if (!target) return;
     setSaving(true);
     setError(null);
     try {
-      await apiFetch("/api/workspace/billing", {
+      const result = await apiFetch<{
+        changed: boolean;
+        pending: boolean;
+        message: string;
+      }>("/api/workspace/billing", {
         method: "POST",
         body: JSON.stringify({ plan: target.id }),
       });
       toast({
-        title: `Plan changed to ${target.name}`,
-        description:
-          target.priceMonthly > 0
-            ? "A demo invoice was added to your billing history."
-            : "Workspace limits now follow the Free plan.",
+        title: result.pending ? "Request recorded" : "Plan updated",
+        description: result.message,
         variant: "success",
       });
       setTarget(null);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "The plan could not be changed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelRequest = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await apiFetch<{ message: string }>("/api/workspace/billing", {
+        method: "POST",
+        body: JSON.stringify({ plan: "free" }),
+      });
+      toast({ title: "Request cancelled", description: result.message, variant: "success" });
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The request could not be cancelled.");
     } finally {
       setSaving(false);
     }
@@ -83,28 +107,66 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
             </div>
           </div>
           <div className="text-left sm:text-right">
-            <p className="font-serif text-[28px] leading-none text-ink">${current.priceMonthly}</p>
-            <p className="mt-1 text-[11px] text-slate">per month</p>
+            <p className="font-serif text-[28px] leading-none text-ink">
+              {formatPlanPrice(current)}
+            </p>
+            <p className="mt-1 text-[11px] text-slate">
+              {current.priceMonthly > 0 ? "per month in naira" : "no cost"}
+            </p>
           </div>
         </div>
+
+        {billing.pendingRequest ? (
+          <div className="mt-5 flex flex-col gap-3 rounded border border-gold/30 bg-warning-bg/50 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+            <p className="text-[12px] leading-5 text-ink-secondary">
+              <span className="font-semibold text-ink">
+                {pendingPlan?.name ?? billing.pendingRequest.plan} requested
+              </span>{" "}
+              on {formatDate(billing.pendingRequest.requestedAt)}. No payment has been taken; the
+              workspace keeps its current entitlements until checkout is connected.
+            </p>
+            {isOwner ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={cancelRequest}
+                disabled={saving}
+                className="shrink-0"
+              >
+                Cancel request
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {error && !target ? (
+          <p className="mt-3 text-[12px] leading-5 text-danger">{error}</p>
+        ) : null}
 
         <dl className="mt-6 grid gap-4 border-t border-hairline pt-5 sm:grid-cols-3">
           <div>
             <dt className="overline">Documents this month</dt>
             <dd className="mt-1.5 text-[13px] font-medium text-ink">
-              {billing.documentsThisMonth} of {quota}
+              {quota === null
+                ? `${billing.documentsThisMonth} · unlimited`
+                : `${billing.documentsThisMonth} of ${quota}`}
             </dd>
-            <div className="mt-2 h-1.5 w-full max-w-[180px] overflow-hidden rounded-full bg-surface-muted">
-              <div
-                className="h-full rounded-full bg-gold transition-[width] duration-200"
-                style={{ width: `${quotaPercent}%` }}
-              />
-            </div>
+            {quota === null ? (
+              <p className="mt-2 text-[11px] text-success-text">No monthly document cap</p>
+            ) : (
+              <div className="mt-2 h-1.5 w-full max-w-[180px] overflow-hidden rounded-full bg-surface-muted">
+                <div
+                  className="h-full rounded-full bg-gold transition-[width] duration-200"
+                  style={{ width: `${quotaPercent}%` }}
+                />
+              </div>
+            )}
           </div>
           <div>
             <dt className="overline">Team seats</dt>
             <dd className="mt-1.5 text-[13px] font-medium text-ink">
-              {billing.seatsUsed} of {billing.seatsIncluded} used
+              {billing.seatsIncluded === null
+                ? `${billing.seatsUsed} · unlimited`
+                : `${billing.seatsUsed} of ${billing.seatsIncluded} used`}
             </dd>
             <p className="mt-1 text-[11px] text-slate">
               <Link href="/app/settings/team" className="underline-offset-2 hover:text-ink hover:underline">
@@ -129,7 +191,8 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Available plans</h2>
             <p className="text-[12px] text-slate">
-              Plan changes take effect immediately and preserve all existing documents.
+              Downgrades apply immediately. Paid upgrades are recorded as requests until a
+              payment provider is connected, and never charge on click.
             </p>
           </div>
           {!isOwner ? (
@@ -154,14 +217,21 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
                   {isCurrent ? <Badge tone="gold">Current</Badge> : null}
                 </div>
                 <p className="mt-2 font-serif text-[26px] leading-none text-ink">
-                  ${plan.priceMonthly}
+                  {formatPlanPrice(plan)}
                   <span className="ml-1 font-sans text-[11px] font-normal text-slate">/mo</span>
                 </p>
                 <ul className="mt-4 flex-1 space-y-2 border-t border-hairline pt-4">
                   {plan.features.slice(0, 4).map((feature) => (
                     <li key={feature} className="flex gap-2 text-[11.5px] leading-5 text-slate">
                       <Check className="mt-0.5 h-3 w-3 shrink-0 text-gold-text" aria-hidden="true" />
-                      {feature}
+                      <span>
+                        {feature}
+                        {plan.pendingFeatures.includes(feature) ? (
+                          <span className="ml-1.5 text-[9.5px] font-semibold uppercase tracking-wide text-placeholder">
+                            soon
+                          </span>
+                        ) : null}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -171,7 +241,7 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
                   </Button>
                 ) : (
                   <Button
-                    variant={plan.id === "pro" ? "primary" : "secondary"}
+                    variant={plan.popular ? "primary" : "secondary"}
                     className="mt-4 w-full"
                     disabled={!isOwner}
                     onClick={() => {
@@ -179,7 +249,7 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
                       setError(null);
                     }}
                   >
-                    {isDowngrade ? `Switch to ${plan.name}` : `Upgrade to ${plan.name}`}
+                    {isDowngrade ? `Switch to ${plan.name}` : `Request ${plan.name}`}
                   </Button>
                 )}
               </div>
@@ -187,8 +257,9 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
           })}
         </div>
         <p className="mt-3 text-[11px] leading-5 text-slate">
-          This deployment activates plan changes immediately without charging a payment method.
-          Production billing would connect a payment provider and issue downloadable receipts.
+          Prices are in Nigerian naira (NGN) for the monthly interval. This deployment has no payment
+          provider or tax collection connected: a paid plan request is stored for follow-up and the
+          current plan remains active until a subscription is genuinely activated.
         </p>
       </section>
 
@@ -223,7 +294,7 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
                     <td className="py-3 pr-4 text-[12px] capitalize text-slate">{invoice.plan}</td>
                     <td className="py-3 text-right">
                       <span className="tabular text-[12px] font-medium text-ink">
-                        ${(invoice.amountCents / 100).toFixed(2)}
+                        {formatMoney(invoice.amountCents)}
                       </span>
                       <span className="ml-2 text-[10.5px] uppercase tracking-wide text-success-text">
                         {invoice.status}
@@ -244,8 +315,16 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
       <Modal
         open={Boolean(target)}
         onClose={() => (saving ? undefined : setTarget(null))}
-        title={`Switch to ${target?.name ?? "this plan"}?`}
-        description="Your workspace limits change immediately. Existing documents, templates and audit records are preserved."
+        title={
+          target && target.priceMonthly > 0
+            ? `Request the ${target.name} plan?`
+            : `Switch to ${target?.name ?? "this plan"}?`
+        }
+        description={
+          target && target.priceMonthly > 0
+            ? "This records a request only. No payment is taken and your current plan stays active until checkout is connected."
+            : "Your workspace limits change immediately. Existing documents, templates and audit records are preserved."
+        }
         size="sm"
         footer={
           <>
@@ -253,7 +332,7 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
               Cancel
             </Button>
             <Button onClick={choose} loading={saving}>
-              Confirm plan change
+              {target && target.priceMonthly > 0 ? "Record request" : "Confirm plan change"}
             </Button>
           </>
         }
@@ -262,19 +341,34 @@ export function BillingPanel({ billing, isOwner }: { billing: BillingView; isOwn
           <dl className="space-y-2 text-[12.5px]">
             <div className="flex items-center justify-between">
               <dt className="text-slate">Monthly price</dt>
-              <dd className="font-medium text-ink">${target.priceMonthly}</dd>
+              <dd className="font-medium text-ink">
+                {formatPlanPrice(target)}
+                {target.priceMonthly > 0 ? " · reference" : ""}
+              </dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-slate">Documents per month</dt>
-              <dd className="text-ink-secondary">{target.documentsPerMonth.toLocaleString("en-US")}</dd>
+              <dd className="text-ink-secondary">
+                {target.entitlements.documentsPerMonth ?? "Unlimited"}
+              </dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-slate">Recipients per document</dt>
-              <dd className="text-ink-secondary">{target.recipientsPerDocument}</dd>
+              <dd className="text-ink-secondary">
+                {target.entitlements.recipientsPerDocument ?? "Unlimited"}
+              </dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-slate">Team seats</dt>
-              <dd className="text-ink-secondary">{target.teamSeats}</dd>
+              <dd className="text-ink-secondary">{target.entitlements.teamSeats ?? "Unlimited"}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-slate">API document sends</dt>
+              <dd className="text-ink-secondary">
+                {target.entitlements.apiDocumentSendsPerMonth === 0
+                  ? "Not included"
+                  : `${target.entitlements.apiDocumentSendsPerMonth} / month`}
+              </dd>
             </div>
           </dl>
         ) : null}

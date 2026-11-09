@@ -189,7 +189,7 @@ export function TemplatesPanel({
                 {template.publicLinkCount > 0 ? (
                   <Link
                     href="/app/public-links"
-                    className="inline-flex h-9 items-center gap-1.5 rounded border border-[rgba(18,20,23,0.12)] px-3 text-[12.5px] font-medium text-ink hover:bg-surface-subtle"
+                    className="inline-flex h-9 items-center gap-1.5 rounded border border-hairline-strong px-3 text-[12.5px] font-medium text-ink hover:bg-surface-subtle"
                   >
                     <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
                     Links

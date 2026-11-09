@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { hashToken } from "@/lib/ids";
 import { getSessionUser } from "@/lib/auth";
+import { getPlan, normalizePlanId } from "@/lib/plans";
 import { RegisterForm } from "@/components/auth/register-form";
 
 export const metadata: Metadata = { title: "Create account" };
@@ -11,9 +12,9 @@ export const dynamic = "force-dynamic";
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite?: string }>;
+  searchParams: Promise<{ invite?: string; plan?: string; email?: string }>;
 }) {
-  const { invite } = await searchParams;
+  const { invite, plan, email } = await searchParams;
   if (await getSessionUser()) redirect("/app/dashboard");
   let inviteEmail: string | undefined;
   let inviteWorkspace: string | undefined;
@@ -35,11 +36,20 @@ export default async function RegisterPage({
       validInvite = invite;
     }
   }
+  const requestedPlan = plan ? getPlan(normalizePlanId(plan)) : null;
+  const selectedPlan =
+    requestedPlan && requestedPlan.priceMonthly > 0
+      ? { name: requestedPlan.name, price: `$${requestedPlan.priceMonthly.toFixed(2)}` }
+      : undefined;
+  const prefillEmail =
+    !inviteEmail && email && email.length <= 254 ? email.trim() : undefined;
   return (
     <RegisterForm
       inviteToken={validInvite}
       inviteEmail={inviteEmail}
+      prefillEmail={prefillEmail}
       inviteWorkspace={inviteWorkspace}
+      selectedPlan={selectedPlan}
     />
   );
 }

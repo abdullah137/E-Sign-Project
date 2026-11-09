@@ -100,7 +100,7 @@ export default async function DocumentsPage({
               name="q"
               defaultValue={q}
               placeholder="Search title or recipient"
-              className="h-10 w-full rounded border border-[rgba(18,20,23,0.12)] bg-surface pl-9 pr-3 text-[13px] text-ink placeholder:text-placeholder focus:border-gold-text"
+              className="h-10 w-full rounded border border-hairline-strong bg-surface pl-9 pr-3 text-[13px] text-ink placeholder:text-placeholder focus:border-gold-text"
             />
           </form>
         </div>

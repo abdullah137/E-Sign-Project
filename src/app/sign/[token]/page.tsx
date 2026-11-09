@@ -60,6 +60,7 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
     checked: value.checked === 1,
     signatureAssetId: value.signature_asset_id,
     signatureMode: value.signature_mode,
+    recordedAt: value.recorded_at,
   }));
 
   return (
@@ -106,11 +107,11 @@ function InvalidLinkScreen({
       ? "bg-warning-bg text-gold-text"
       : copy.icon === "shield"
         ? "bg-surface-muted text-slate"
-        : "bg-[#FBEAEA] text-danger";
+        : "bg-danger-bg text-danger";
 
   return (
     <div className="flex min-h-screen flex-col bg-bg">
-      <header className="border-b border-hairline bg-[rgba(248,249,250,0.94)]">
+      <header className="border-b border-hairline bg-card/90">
         <div className="mx-auto flex max-w-6xl items-center px-4 py-3 sm:px-6">
           <Logo href="/" />
         </div>
@@ -134,7 +135,7 @@ function InvalidLinkScreen({
         </div>
         <p className="mt-6 text-center text-[12px] text-slate">
           <Link href="/" className="font-medium text-gold-text underline-offset-2 hover:underline">
-            Learn about SignFlow
+            Learn about Juripass
           </Link>
         </p>
       </main>

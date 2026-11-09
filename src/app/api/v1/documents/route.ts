@@ -23,12 +23,16 @@ export async function GET(request: Request) {
     }
     const url = new URL(request.url);
     const status = url.searchParams.get("status") ?? undefined;
-    const limit = Number(url.searchParams.get("limit") ?? 25);
-    const offset = Number(url.searchParams.get("offset") ?? 0);
+    const requestedLimit = Number(url.searchParams.get("limit") ?? 25);
+    const requestedOffset = Number(url.searchParams.get("offset") ?? 0);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(100, Math.max(1, Math.trunc(requestedLimit)))
+      : 25;
+    const offset = Number.isFinite(requestedOffset) ? Math.max(0, Math.trunc(requestedOffset)) : 0;
     const result = listDocuments(getDb(), auth.workspaceId, {
       status,
-      limit: Number.isFinite(limit) ? limit : 25,
-      offset: Number.isFinite(offset) ? offset : 0,
+      limit,
+      offset,
     });
     return NextResponse.json(
       {
