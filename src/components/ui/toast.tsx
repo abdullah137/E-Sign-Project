@@ -64,8 +64,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={item.id}
             className={cn(
               "pointer-events-auto flex items-start gap-3 rounded-md border bg-surface px-4 py-3.5 shadow-float",
-              item.variant === "success" && "border-[rgba(40,93,57,0.18)]",
-              item.variant === "error" && "border-[rgba(186,26,26,0.2)]",
+              item.variant === "success" && "border-success-text/25",
+              item.variant === "error" && "border-danger/30",
               item.variant === "info" && "border-hairline",
             )}
             role="status"
@@ -75,7 +75,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             ) : item.variant === "error" ? (
               <AlertCircle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-danger" aria-hidden="true" />
             ) : (
-              <Info className="mt-0.5 h-4.5 w-4.5 shrink-0 text-gold-text" aria-hidden="true" />
+              <Info className="mt-0.5 h-4.5 w-4.5 shrink-0 text-brand-600" aria-hidden="true" />
             )}
             <div className="min-w-0 flex-1">
               <p className="text-[13.5px] font-semibold leading-5 text-ink">{item.title}</p>

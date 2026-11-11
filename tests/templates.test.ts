@@ -16,6 +16,7 @@ vi.mock("@/lib/storage", async (importOriginal) => {
 
 import {
   archiveTemplate,
+  assertTemplateQuota,
   createDocumentFromTemplate,
   createPublicLink,
   getPublicLinkContext,
@@ -158,23 +159,21 @@ describe("createDocumentFromTemplate", () => {
     ).toThrow(/valid email/i);
   });
 
-  it("enforces the monthly document quota", () => {
+  it("enforces the Free active template limit", () => {
     const db = makeDb();
     const { workspaceId } = seedWorkspace(db, "free");
-    const templateId = addTemplate(db, workspaceId);
-    for (let index = 1; index <= 5; index += 1) {
-      addDocument(db, workspaceId, { id: `doc_quota_${index}` });
-    }
+    addTemplate(db, workspaceId);
 
-    expect(() =>
-      createDocumentFromTemplate(db, {
-        workspaceId,
-        userId: "usr_owner",
-        userLabel: "Dana Owner",
-        templateId,
-        recipients: [{ name: "Amelia", email: "amelia@example.com" }],
-      }),
-    ).toThrow(/monthly limit/i);
+    expect(() => assertTemplateQuota(db, workspaceId)).toThrow(/includes 1 active template/i);
+  });
+
+  it("allows unlimited active templates on a paid plan", () => {
+    const db = makeDb();
+    const { workspaceId } = seedWorkspace(db, "starter");
+    addTemplate(db, workspaceId, { id: "tpl_one" });
+    addTemplate(db, workspaceId, { id: "tpl_two" });
+
+    expect(() => assertTemplateQuota(db, workspaceId)).not.toThrow();
   });
 });
 

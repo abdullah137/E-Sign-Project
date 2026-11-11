@@ -115,9 +115,10 @@ export function createTeamInvite(
       "SELECT COUNT(*) AS count FROM workspace_invites WHERE workspace_id = ? AND accepted_at IS NULL AND expires_at > ?",
     )
     .get(input.workspaceId, nowIso()) as { count: number };
-  if (Number(members.count) + Number(invites.count) >= input.plan.teamSeats) {
+  const seatsIncluded = input.plan.entitlements.teamSeats;
+  if (seatsIncluded !== null && Number(members.count) + Number(invites.count) >= seatsIncluded) {
     throw new ConflictError(
-      `The ${input.plan.name} plan includes ${input.plan.teamSeats} team seat${input.plan.teamSeats === 1 ? "" : "s"}. Upgrade to invite more people.`,
+      `The ${input.plan.name} plan includes ${seatsIncluded} team seat${seatsIncluded === 1 ? "" : "s"}. Upgrade to invite more people.`,
     );
   }
 
@@ -143,10 +144,10 @@ export function createTeamInvite(
   queueEmail(db, {
     kind: "team_invite",
     to: email,
-    subject: `${input.actor.label} invited you to ${input.workspaceName} on SignFlow`,
+    subject: `${input.actor.label} invited you to ${input.workspaceName} on Juripass`,
     heading: `Join ${input.workspaceName}`,
     intro: [
-      `${input.actor.label} has invited you to collaborate in the ${input.workspaceName} workspace on SignFlow as ${input.role === "admin" ? "an admin" : "a member"}.`,
+      `${input.actor.label} has invited you to collaborate in the ${input.workspaceName} workspace on Juripass as ${input.role === "admin" ? "an admin" : "a member"}.`,
       "Create your account to prepare documents, send signature requests and follow signing activity. This invitation expires in seven days.",
     ],
     cta: { label: "Accept invitation", url: link },
@@ -260,6 +261,14 @@ export function changePassword(
   });
 }
 
+export function getPlanForWorkspace(db: DatabaseSync, workspaceId: string): PlanDefinition {
+  const workspace = db.prepare("SELECT plan FROM workspaces WHERE id = ?").get(workspaceId) as
+    | { plan: string }
+    | undefined;
+  if (!workspace) throw new ConflictError("Workspace not found.");
+  return getPlan(workspace.plan);
+}
+
 export interface SubscriptionSummary {
   plan: PlanDefinition;
   status: string;
@@ -275,12 +284,20 @@ export interface InvoiceSummary {
   issuedAt: string;
 }
 
+export interface PlanRequestSummary {
+  id: string;
+  plan: string;
+  status: string;
+  requestedAt: string;
+}
+
 export interface BillingOverview {
   plan: PlanDefinition;
   subscription: SubscriptionSummary;
+  pendingRequest: PlanRequestSummary | null;
   invoices: InvoiceSummary[];
   seatsUsed: number;
-  seatsIncluded: number;
+  seatsIncluded: number | null;
   documentsThisMonth: number;
 }
 
@@ -313,6 +330,13 @@ export function getBillingOverview(
   const seats = db
     .prepare("SELECT COUNT(*) AS count FROM memberships WHERE workspace_id = ? AND status = 'active'")
     .get(workspaceId) as { count: number };
+  const pending = db
+    .prepare(
+      "SELECT id, plan, status, created_at FROM plan_requests WHERE workspace_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(workspaceId) as
+    | { id: string; plan: string; status: string; created_at: string }
+    | undefined;
   return {
     plan,
     subscription: {
@@ -321,6 +345,14 @@ export function getBillingOverview(
       renewsAt: sub?.renews_at ?? null,
       providerRef: sub?.provider_ref ?? null,
     },
+    pendingRequest: pending
+      ? {
+          id: pending.id,
+          plan: pending.plan,
+          status: pending.status,
+          requestedAt: pending.created_at,
+        }
+      : null,
     invoices: invoices.map((invoice) => ({
       id: invoice.id,
       plan: invoice.plan,
@@ -329,45 +361,164 @@ export function getBillingOverview(
       issuedAt: invoice.issued_at,
     })),
     seatsUsed: Number(seats.count),
-    seatsIncluded: plan.teamSeats,
+    seatsIncluded: plan.entitlements.teamSeats,
     documentsThisMonth,
   };
 }
 
-export function changePlan(
+export interface PlanChangeResult {
+  plan: PlanDefinition;
+  changed: boolean;
+  pending: boolean;
+  message: string;
+}
+
+/**
+ * Downgrades are immediate because they take nothing from the customer. Upgrades
+ * are recorded as requests only: no payment is collected and the workspace keeps
+ * its current entitlements until a checkout provider activates the subscription.
+ */
+export function requestPlanChange(
   db: DatabaseSync,
   workspaceId: string,
-  planId: "free" | "pro" | "business",
-): { plan: PlanDefinition; changed: boolean } {
+  planId: string,
+  requestedBy: string,
+): PlanChangeResult {
   const plan = getPlan(planId);
   const workspace = db.prepare("SELECT plan FROM workspaces WHERE id = ?").get(workspaceId) as
     | { plan: string }
     | undefined;
   if (!workspace) throw new ConflictError("Workspace not found.");
-  if (workspace.plan === plan.id) return { plan, changed: false };
-  const seats = db
-    .prepare("SELECT COUNT(*) AS count FROM memberships WHERE workspace_id = ? AND status = 'active'")
-    .get(workspaceId) as { count: number };
-  if (Number(seats.count) > plan.teamSeats) {
-    throw new ConflictError(
-      `This workspace has ${seats.count} members. The ${plan.name} plan includes ${plan.teamSeats} seat${plan.teamSeats === 1 ? "" : "s"}. Remove team members before downgrading.`,
-    );
+  const current = getPlan(workspace.plan);
+  if (current.id === plan.id && plan.id !== "free") {
+    return {
+      plan,
+      changed: false,
+      pending: false,
+      message: `This workspace is already on the ${plan.name} plan.`,
+    };
   }
+
+  if (plan.id === "free" && current.id === "free") {
+    const cancelled = db
+      .prepare(
+        "UPDATE plan_requests SET status = 'cancelled' WHERE workspace_id = ? AND status = 'pending'",
+      )
+      .run(workspaceId).changes;
+    return {
+      plan,
+      changed: false,
+      pending: false,
+      message: cancelled
+        ? "The pending plan request has been cancelled. Your workspace remains on the Free plan."
+        : "This workspace is already on the Free plan.",
+    };
+  }
+
+  if (plan.priceMonthly === 0) {
+    const seats = db
+      .prepare("SELECT COUNT(*) AS count FROM memberships WHERE workspace_id = ? AND status = 'active'")
+      .get(workspaceId) as { count: number };
+    const seatLimit = plan.entitlements.teamSeats;
+    if (seatLimit !== null && Number(seats.count) > seatLimit) {
+      throw new ConflictError(
+        `This workspace has ${seats.count} members. The ${plan.name} plan includes ${seatLimit} seat${seatLimit === 1 ? "" : "s"}. Remove team members before downgrading.`,
+      );
+    }
+    const now = nowIso();
+    transaction(db, () => {
+      db.prepare("UPDATE workspaces SET plan = ? WHERE id = ?").run(plan.id, workspaceId);
+      db.prepare(
+        `INSERT INTO subscriptions (workspace_id, plan, status, renews_at, updated_at)
+         VALUES (?, ?, 'active', NULL, ?)
+         ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, status = 'active', renews_at = NULL, updated_at = excluded.updated_at`,
+      ).run(workspaceId, plan.id, now);
+      db.prepare(
+        "UPDATE plan_requests SET status = 'cancelled' WHERE workspace_id = ? AND status = 'pending'",
+      ).run(workspaceId);
+    });
+    return {
+      plan,
+      changed: true,
+      pending: false,
+      message: `Your workspace is now on the Free plan. Existing documents and audit records are unchanged.`,
+    };
+  }
+
   const now = nowIso();
   transaction(db, () => {
-    db.prepare("UPDATE workspaces SET plan = ? WHERE id = ?").run(plan.id, workspaceId);
     db.prepare(
-      `INSERT INTO subscriptions (workspace_id, plan, status, renews_at, updated_at)
-       VALUES (?, ?, 'active', ?, ?)
-       ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, status = 'active', renews_at = excluded.renews_at, updated_at = excluded.updated_at`,
-    ).run(workspaceId, plan.id, plan.priceMonthly > 0 ? addDaysIso(30) : null, now);
-    if (plan.priceMonthly > 0) {
-      db.prepare(
-        "INSERT INTO invoices (id, workspace_id, plan, amount_cents, status, issued_at) VALUES (?, ?, ?, ?, 'paid', ?)",
-      ).run(newId("inv"), workspaceId, plan.id, plan.priceMonthly * 100, now);
-    }
+      "UPDATE plan_requests SET status = 'superseded' WHERE workspace_id = ? AND status = 'pending'",
+    ).run(workspaceId);
+    db.prepare(
+      "INSERT INTO plan_requests (id, workspace_id, plan, status, requested_by, created_at) VALUES (?, ?, ?, 'pending', ?, ?)",
+    ).run(newId("req"), workspaceId, plan.id, requestedBy, now);
   });
-  return { plan, changed: true };
+  return {
+    plan,
+    changed: false,
+    pending: true,
+    message: `Your ${plan.name} request has been recorded. No payment was taken and the workspace remains on ${current.name} until checkout is connected.`,
+  };
+}
+
+export interface BankDetailsInput {
+  bankName: string;
+  bankCode?: string | null;
+  accountName: string;
+  accountNumber: string;
+  accountType: string;
+}
+
+export function validateBankDetails(input: BankDetailsInput): {
+  bankName: string;
+  bankCode: string | null;
+  accountName: string;
+  accountNumber: string;
+  accountType: "Savings" | "Current";
+} {
+  const bankName = input.bankName.trim();
+  const accountName = input.accountName.trim();
+  const accountNumber = input.accountNumber.trim();
+  const bankCode = input.bankCode?.trim() || null;
+  if (bankName.length < 2) throw new ValidationError("Select the bank that holds the account.");
+  if (bankName.length > 80) throw new ValidationError("The bank name must be 80 characters or fewer.");
+  if (accountName.length < 2) throw new ValidationError("Enter the account name.");
+  if (accountName.length > 120) {
+    throw new ValidationError("The account name must be 120 characters or fewer.");
+  }
+  if (!/^\d{10}$/.test(accountNumber)) {
+    throw new ValidationError("Enter a 10-digit NUBAN account number.");
+  }
+  if (input.accountType !== "Savings" && input.accountType !== "Current") {
+    throw new ValidationError("Choose Savings or Current as the account type.");
+  }
+  return {
+    bankName,
+    bankCode,
+    accountName,
+    accountNumber,
+    accountType: input.accountType,
+  };
+}
+
+export function updateBankDetails(
+  db: DatabaseSync,
+  workspaceId: string,
+  input: BankDetailsInput,
+): void {
+  const details = validateBankDetails(input);
+  db.prepare(
+    `UPDATE workspaces SET bank_name = ?, bank_code = ?, bank_account_name = ?,
+       bank_account_number = ?, bank_account_type = ? WHERE id = ?`,
+  ).run(
+    details.bankName,
+    details.bankCode,
+    details.accountName,
+    details.accountNumber,
+    details.accountType,
+    workspaceId,
+  );
 }
 
 export function updateBranding(
@@ -384,7 +535,12 @@ export function updateBranding(
   }
   const color = input.brandColor?.trim() || null;
   if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
-    throw new ValidationError("Choose a six-digit hex colour, for example #B89558.");
+    throw new ValidationError("Choose a six-digit hex colour, for example #2563EB.");
+  }
+  if ((display || color) && !getPlanForWorkspace(db, workspaceId).entitlements.customBranding) {
+    throw new ConflictError(
+      "Custom branding is available on Starter and Team. Upgrade to change the sender display name or accent colour.",
+    );
   }
   db.prepare(
     "UPDATE workspaces SET name = ?, brand_display_name = ?, brand_color = ? WHERE id = ?",
@@ -429,6 +585,11 @@ export function createApiKey(
   workspaceId: string,
   label: string,
 ): { id: string; key: string; prefix: string } {
+  if (getPlanForWorkspace(db, workspaceId).entitlements.apiDocumentSendsPerMonth === 0) {
+    throw new ConflictError(
+      "API access is available on Starter and Team. Upgrade to create an API key.",
+    );
+  }
   const cleanLabel = label.trim();
   if (cleanLabel.length < 2) throw new ValidationError("Give this key a label.");
   if (cleanLabel.length > 60) throw new ValidationError("The label must be 60 characters or fewer.");
@@ -439,7 +600,7 @@ export function createApiKey(
     throw new ConflictError("You can have at most 10 active API keys. Revoke one before creating another.");
   }
   const id = newId("key");
-  const raw = `sf_live_${newToken(24)}`;
+  const raw = `jp_live_${newToken(24)}`;
   const prefix = raw.slice(0, 15);
   db.prepare(
     `INSERT INTO api_keys (id, workspace_id, label, prefix, key_hash, scopes, created_at)
@@ -459,13 +620,16 @@ export function authenticateApiKey(
   db: DatabaseSync,
   rawKey: string,
 ): { workspaceId: string; keyId: string; scopes: string[] } {
-  if (!rawKey.startsWith("sf_live_")) throw new PermissionError("Invalid API key.");
+  if (!rawKey.startsWith("jp_live_")) throw new PermissionError("Invalid API key.");
   const row = db
     .prepare("SELECT * FROM api_keys WHERE key_hash = ?")
     .get(sha256Hex(rawKey)) as
     | { id: string; workspace_id: string; scopes: string; revoked_at: string | null }
     | undefined;
   if (!row || row.revoked_at) throw new PermissionError("Invalid or revoked API key.");
+  if (getPlanForWorkspace(db, row.workspace_id).entitlements.apiDocumentSendsPerMonth === 0) {
+    throw new PermissionError("API access is not included in this workspace's plan.");
+  }
   db.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").run(nowIso(), row.id);
   return {
     workspaceId: row.workspace_id,

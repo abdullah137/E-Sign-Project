@@ -94,7 +94,7 @@ export async function buildAuditCertificate(data: CertificateData): Promise<Uint
   };
 
   page.drawRectangle({ x: 0, y: height - 6, width, height: 6, color: GOLD });
-  page.drawText("SIGNFLOW", { x: margin, y: y - 4, size: 9, font: bold, color: GOLD });
+  page.drawText("JURIPASS", { x: margin, y: y - 4, size: 9, font: bold, color: GOLD });
   y -= 26;
   text("Certificate of Completion", { size: 24, font: serifBold, gap: 8 });
   const titleLines = wrap(data.documentTitle, 62);
@@ -214,7 +214,7 @@ export async function buildAuditCertificate(data: CertificateData): Promise<Uint
   });
   y -= 16;
   const disclaimer =
-    "This certificate records the signing activity and document hashes held by SignFlow at the time of completion. " +
+    "This certificate records the signing activity and document hashes held by Juripass Sign Flow at the time of completion. " +
     "It is an evidentiary record, not a legal opinion. The legal effect of an electronic signature depends on the " +
     "applicable jurisdiction, identity assurance, consent, and the circumstances of the transaction. Consult qualified " +
     "counsel for your jurisdiction.";

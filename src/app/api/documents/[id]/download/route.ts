@@ -4,6 +4,7 @@ import { requireApiContext } from "@/lib/api-auth";
 import { getDb } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
 import {
+  assertWithinRetention,
   ensureDocumentAccess,
   getCompletedDocumentData,
   getDocument,
@@ -31,6 +32,7 @@ export async function GET(
     const doc = getDocument(db, id, ctx.workspace.id);
     if (!doc) return apiError("Document not found.", 404, "not_found");
     ensureDocumentAccess(ctx.membership.role, doc, ctx.user.id, "view");
+    assertWithinRetention(db, doc);
 
     const url = new URL(request.url);
     const kind = url.searchParams.get("kind") || "original";

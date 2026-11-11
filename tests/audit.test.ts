@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { appendAuditEvent, getAuditEvents, stableStringify, verifyAuditChain } from "@/lib/audit";
 import { makeDb, seedWorkspace } from "./helpers";
 
@@ -128,7 +129,87 @@ describe("audit hash chain", () => {
 
     expect(getAuditEvents(db, "doc_audit")).toHaveLength(1);
     expect(getAuditEvents(db, "doc_other")[0].previous_hash).toBe("");
+    expect(getAuditEvents(db, "doc_other")[0].sequence).toBe(1);
     expect(verifyAuditChain(db, "doc_audit").valid).toBe(true);
     expect(verifyAuditChain(db, "doc_other").valid).toBe(true);
+  });
+
+  it("assigns a monotonic sequence and preserves occurred, processed and delivered times", () => {
+    const { db, workspaceId } = setup();
+    const first = appendAuditEvent(db, {
+      documentId: "doc_audit",
+      workspaceId,
+      eventType: "document.created",
+      actorKind: "sender",
+    });
+    appendAuditEvent(db, {
+      documentId: "doc_audit",
+      workspaceId,
+      eventType: "recipient.invited",
+      actorKind: "system",
+      actorLabel: "SignFlow",
+      recipientId: "rcp_1",
+      processedAt: "2026-01-01T00:01:00.000Z",
+      deliveryStatus: "sent",
+      deliveredAt: "2026-01-01T00:02:00.000Z",
+      correlationId: "mail_1",
+      causationId: first,
+    });
+    appendAuditEvent(db, {
+      documentId: "doc_audit",
+      workspaceId,
+      eventType: "document.sent",
+      actorKind: "sender",
+    });
+
+    const events = getAuditEvents(db, "doc_audit");
+    expect(events.map((event) => event.sequence)).toEqual([1, 2, 3]);
+    expect(events.map((event) => event.hash_version)).toEqual([2, 2, 2]);
+    expect(events[1]).toMatchObject({
+      recipient_id: "rcp_1",
+      processed_at: "2026-01-01T00:01:00.000Z",
+      delivery_status: "sent",
+      delivered_at: "2026-01-01T00:02:00.000Z",
+      correlation_id: "mail_1",
+      causation_id: first,
+    });
+    expect(events[2].previous_hash).toBe(events[1].entry_hash);
+    expect(verifyAuditChain(db, "doc_audit")).toMatchObject({ valid: true, events: 3 });
+  });
+
+  it("keeps legacy version 1 hashes valid when new timeline events are appended", () => {
+    const { db, workspaceId } = setup();
+    const id = "evt_legacy";
+    const at = "2026-01-01T00:00:00.000Z";
+    const canonical = stableStringify({
+      id,
+      documentId: "doc_audit",
+      workspaceId,
+      eventType: "document.created",
+      actorKind: "sender",
+      actorId: null,
+      actorLabel: null,
+      at,
+      metadata: {},
+    });
+    const entryHash = createHash("sha256").update(`\n${canonical}`).digest("hex");
+    db.prepare(
+      `INSERT INTO audit_events
+        (id, document_id, workspace_id, event_type, actor_kind, sequence, at,
+         hash_version, metadata_json, previous_hash, entry_hash)
+       VALUES (?, 'doc_audit', ?, 'document.created', 'sender', 1, ?, 1, '{}', '', ?)`,
+    ).run(id, workspaceId, at, entryHash);
+
+    appendAuditEvent(db, {
+      documentId: "doc_audit",
+      workspaceId,
+      eventType: "document.sent",
+      actorKind: "sender",
+    });
+
+    const events = getAuditEvents(db, "doc_audit");
+    expect(events[0]).toMatchObject({ id, sequence: 1, hash_version: 1, previous_hash: "" });
+    expect(events[1]).toMatchObject({ sequence: 2, hash_version: 2, previous_hash: entryHash });
+    expect(verifyAuditChain(db, "doc_audit")).toEqual({ valid: true, events: 2 });
   });
 });

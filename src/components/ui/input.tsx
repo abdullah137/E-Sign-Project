@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const controlClass =
-  "w-full rounded border border-[rgba(18,20,23,0.12)] bg-surface text-[15px] text-ink placeholder:text-placeholder transition-colors duration-160 hover:border-[rgba(18,20,23,0.2)] focus:border-gold-text disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-slate aria-[invalid=true]:border-danger";
+  "w-full rounded border border-hairline-strong bg-surface text-[15px] text-ink placeholder:text-placeholder transition-colors duration-150 hover:border-slate/50 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-slate aria-[invalid=true]:border-danger";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {
@@ -64,7 +64,7 @@ export function Label({
       className={cn("mb-1.5 block text-[13px] font-medium text-ink", className)}
     >
       {children}
-      {required ? <span className="ml-1 text-gold-text">*</span> : null}
+      {required ? <span className="ml-1 text-brand-text">*</span> : null}
     </label>
   );
 }
@@ -129,7 +129,7 @@ export const Checkbox = React.forwardRef<
           id={id}
           ref={ref}
           type="checkbox"
-          className="peer h-4 w-4 cursor-pointer appearance-none rounded-sm border border-[rgba(18,20,23,0.28)] bg-white transition-colors checked:border-ink checked:bg-ink"
+          className="peer h-4 w-4 cursor-pointer appearance-none rounded-sm border border-hairline-strong bg-surface transition-colors checked:border-brand-600 checked:bg-brand-600"
           {...props}
         />
         <Check

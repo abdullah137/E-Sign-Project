@@ -67,7 +67,7 @@ export interface PrepareEditorProps {
   initialRecipients: EditorRecipient[];
   initialFields: EditorField[];
   fileUrl: string;
-  recipientLimit: number;
+  recipientLimit: number | null;
   planName: string;
 }
 
@@ -352,7 +352,7 @@ export function PrepareEditor({
       setRecipientError("Enter a valid email address.");
       return;
     }
-    if (recipients.length >= recipientLimit) {
+    if (recipientLimit !== null && recipients.length >= recipientLimit) {
       setRecipientError(
         `Your ${planName} plan allows ${recipientLimit} recipients per document.`,
       );
@@ -714,7 +714,7 @@ export function PrepareEditor({
                   "flex items-center gap-2.5 rounded text-left transition-colors",
                   compact ? "min-h-[52px] shrink-0 flex-col justify-center px-3 text-[10px]" : "min-h-[38px] w-full px-2.5 text-[12.5px]",
                   activeTool === type
-                    ? "bg-warning-bg/70 text-ink ring-1 ring-[rgba(184,149,88,0.35)]"
+                    ? "bg-warning-bg/70 text-ink ring-1 ring-gold/30"
                     : "text-slate hover:bg-surface-subtle hover:text-ink",
                 )}
               >
@@ -995,9 +995,9 @@ function FieldBox({
         top: `${field.y * 100}%`,
         width: `${field.width * 100}%`,
         height: `${field.height * 100}%`,
-        border: `1px solid ${selected ? "#B89558" : color.border}`,
-        backgroundColor: selected ? "rgba(184,149,88,0.12)" : color.fill,
-        boxShadow: selected ? "0 0 0 2px #B89558" : undefined,
+        border: `1px solid ${selected ? "rgb(var(--accent))" : color.border}`,
+        backgroundColor: selected ? "rgba(37,99,235,0.10)" : color.fill,
+        boxShadow: selected ? "0 0 0 2px rgb(var(--accent))" : undefined,
         cursor: "move",
         touchAction: "none",
       }}
@@ -1065,7 +1065,7 @@ function RecipientsPanel({
   onRemove: (recipient: EditorRecipient) => void;
   onUpdateField: (patch: Partial<EditorField>) => void;
   onDeleteField: (fieldId: string) => void;
-  recipientLimit: number;
+  recipientLimit: number | null;
   planName: string;
 }) {
   return (
@@ -1074,7 +1074,9 @@ function RecipientsPanel({
         <div>
           <p className="overline">Recipients</p>
           <p className="mt-1 text-[12px] text-slate">
-            {recipients.length} of {recipientLimit} on {planName}
+            {recipientLimit === null
+              ? `${recipients.length} recipients · unlimited on ${planName}`
+              : `${recipients.length} of ${recipientLimit} on ${planName}`}
           </p>
         </div>
         <button
@@ -1164,7 +1166,7 @@ function RecipientsPanel({
                 <button
                   type="button"
                   onClick={() => onRemove(recipient)}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate opacity-0 transition-opacity hover:bg-[#FBEAEA] hover:text-danger focus:opacity-100 group-hover:opacity-100"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate opacity-0 transition-opacity hover:bg-danger-bg hover:text-danger focus:opacity-100 group-hover:opacity-100"
                   aria-label={`Remove ${recipient.name || recipient.email}`}
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1225,7 +1227,7 @@ function RecipientsPanel({
             <Button
               variant="secondary"
               size="sm"
-              className="w-full text-danger hover:bg-[#FBEAEA]"
+              className="w-full text-danger hover:bg-danger-bg"
               onClick={() => onDeleteField(selectedField.id)}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

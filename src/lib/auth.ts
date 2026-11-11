@@ -26,6 +26,14 @@ export interface WorkspaceRow {
   brand_display_name: string | null;
   brand_color: string | null;
   brand_logo_asset_id: string | null;
+  law_firm_email: string | null;
+  law_firm_phone: string | null;
+  law_firm_address: string | null;
+  bank_name: string | null;
+  bank_code: string | null;
+  bank_account_name: string | null;
+  bank_account_number: string | null;
+  bank_account_type: string | null;
   created_at: string;
 }
 
@@ -145,6 +153,14 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext | nu
       brand_display_name: row.brand_display_name,
       brand_color: row.brand_color,
       brand_logo_asset_id: row.brand_logo_asset_id,
+      law_firm_email: row.law_firm_email,
+      law_firm_phone: row.law_firm_phone,
+      law_firm_address: row.law_firm_address,
+      bank_name: row.bank_name,
+      bank_code: row.bank_code,
+      bank_account_name: row.bank_account_name,
+      bank_account_number: row.bank_account_number,
+      bank_account_type: row.bank_account_type,
       created_at: row.created_at,
     },
     membership: {

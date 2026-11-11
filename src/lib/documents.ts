@@ -60,6 +60,7 @@ export interface DocumentRow {
   expires_at: string | null;
   void_reason: string | null;
   voided_at: string | null;
+  signing_mode: "parallel" | "sequential";
   created_at: string;
   updated_at: string;
 }
@@ -254,7 +255,7 @@ export function expireStaleDocuments(db: DatabaseSync, workspaceId?: string): vo
         workspaceId: row.workspace_id,
         eventType: "document.expired",
         actorKind: "system",
-        actorLabel: "SignFlow",
+        actorLabel: "Juripass",
         metadata: {},
       });
     });
@@ -342,6 +343,28 @@ export function updateDraftMeta(
   );
 }
 
+export function retentionDeadline(
+  plan: PlanDefinition,
+  doc: Pick<DocumentRow, "created_at" | "completed_at">,
+): string | null {
+  const days = plan.entitlements.documentRetentionDays;
+  if (days === null) return null;
+  const start = doc.completed_at ?? doc.created_at;
+  return new Date(new Date(start).getTime() + days * 86_400_000).toISOString();
+}
+
+export function assertWithinRetention(db: DatabaseSync, doc: DocumentRow): void {
+  const workspace = getWorkspace(db, doc.workspace_id);
+  if (!workspace) throw new NotFoundError("Workspace not found.");
+  const plan = getPlan(workspace.plan);
+  const deadline = retentionDeadline(plan, doc);
+  if (deadline && Date.now() > new Date(deadline).getTime()) {
+    throw new ConflictError(
+      `The ${plan.name} plan retains documents for ${plan.entitlements.documentRetentionDays} days. This document is outside that window; upgrade to restore long-term access.`,
+    );
+  }
+}
+
 export function validateDocumentForSend(
   db: DatabaseSync,
   doc: DocumentRow,
@@ -362,10 +385,11 @@ export function validateDocumentForSend(
   if (recipients.length === 0) {
     issues.push({ scope: "document", message: "Add at least one recipient." });
   }
-  if (recipients.length > plan.recipientsPerDocument) {
+  if (plan.entitlements.recipientsPerDocument !== null &&
+      recipients.length > plan.entitlements.recipientsPerDocument) {
     issues.push({
       scope: "document",
-      message: `Your ${plan.name} plan allows ${plan.recipientsPerDocument} recipients per document.`,
+      message: `Your ${plan.name} plan allows ${plan.entitlements.recipientsPerDocument} recipients per document.`,
     });
   }
   const seen = new Set<string>();
@@ -430,10 +454,11 @@ export function validateDocumentForSend(
     }
   }
   const quota = countDocumentsThisMonth(db, doc.workspace_id);
-  if (quota >= plan.documentsPerMonth) {
+  if (plan.entitlements.documentsPerMonth !== null &&
+      quota >= plan.entitlements.documentsPerMonth) {
     issues.push({
       scope: "document",
-      message: `You have reached the ${plan.documentsPerMonth}-document monthly limit on the ${plan.name} plan.`,
+      message: `You have reached the ${plan.entitlements.documentsPerMonth}-document monthly limit on the ${plan.name} plan.`,
     });
   }
   return issues;
@@ -480,7 +505,19 @@ export async function sendDocument(
   if (message && message.length > 2000) {
     throw new ValidationError("The message must be 2,000 characters or fewer.");
   }
+  if (message?.trim() && !plan.entitlements.customMessages) {
+    throw new ValidationError(
+      "Custom recipient messages are available on Starter and Team. Remove the message or upgrade to continue.",
+    );
+  }
   const recipients = getRecipients(db, doc.id);
+  const sequential = doc.signing_mode === "sequential";
+  const firstOrder = recipients.length
+    ? Math.min(...recipients.map((recipient) => recipient.signing_order))
+    : 1;
+  const inviteGroup = sequential
+    ? recipients.filter((recipient) => recipient.signing_order === firstOrder)
+    : recipients;
   const links: SendResult["links"] = [];
   const now = nowIso();
 
@@ -491,7 +528,7 @@ export async function sendDocument(
       )
       .run(now, expiresAt, message ?? null, now, doc.id).changes;
     if (!changed) throw new ConflictError("This document has already been sent.");
-    for (const recipient of recipients) {
+    for (const recipient of inviteGroup) {
       const token = newToken(32);
       db.prepare(
         `UPDATE recipients SET status = 'INVITED', invite_sent_at = ?, token_hash = ?, token_expires_at = ?, updated_at = ? WHERE id = ?`,
@@ -509,9 +546,16 @@ export async function sendDocument(
         actorKind: "sender",
         actorId: input.actor.id,
         actorLabel: input.actor.label,
+        recipientId: recipient.id,
+        correlationId: recipient.id,
         ip: input.ip,
         userAgent: input.userAgent,
-        metadata: { recipientId: recipient.id, email: recipient.email },
+        metadata: {
+          recipientId: recipient.id,
+          email: recipient.email,
+          signingOrder: recipient.signing_order,
+          deferred: sequential && inviteGroup.length < recipients.length,
+        },
       });
     }
     appendAuditEvent(db, {
@@ -525,6 +569,8 @@ export async function sendDocument(
       userAgent: input.userAgent,
       metadata: {
         recipients: recipients.length,
+        invited: inviteGroup.length,
+        signingMode: doc.signing_mode,
         expiresAt,
         documentSha256: getDocumentFiles(db, doc.id).original?.sha256 ?? null,
       },
@@ -552,6 +598,77 @@ export async function sendDocument(
     });
   }
   return { links, expiresAt };
+}
+
+async function inviteNextSigningOrder(db: DatabaseSync, documentId: string): Promise<void> {
+  const doc = getDocument(db, documentId);
+  if (!doc || doc.status !== "PENDING" || doc.signing_mode !== "sequential") return;
+  const recipients = getRecipients(db, documentId);
+  const pending = recipients.filter((recipient) => recipient.status !== "SIGNED");
+  if (!pending.length) return;
+  const nextOrder = Math.min(...pending.map((recipient) => recipient.signing_order));
+  const earlier = recipients.filter((recipient) => recipient.signing_order < nextOrder);
+  if (earlier.some((recipient) => recipient.status !== "SIGNED")) return;
+  const group = pending.filter((recipient) => recipient.signing_order === nextOrder);
+  if (
+    group.some((recipient) =>
+      ["INVITED", "OPENED", "CONSENTED"].includes(recipient.status),
+    )
+  ) {
+    return;
+  }
+  const workspace = getWorkspace(db, doc.workspace_id);
+  if (!workspace) return;
+  const expiresAt = doc.expires_at || addDaysIso(env.signingLinkTtlDays);
+  const now = nowIso();
+  const links: Array<{ recipient: RecipientRow; link: string }> = [];
+  for (const recipient of group) {
+    if (["SIGNED", "DECLINED", "REVOKED", "EXPIRED"].includes(recipient.status)) continue;
+    const token = newToken(32);
+    db.prepare(
+      "UPDATE recipients SET status = 'INVITED', invite_sent_at = ?, token_hash = ?, token_expires_at = ?, updated_at = ? WHERE id = ?",
+    ).run(now, hashToken(token), expiresAt, now, recipient.id);
+    links.push({ recipient, link: appLink(`/sign/${token}`) });
+    appendAuditEvent(db, {
+      documentId,
+      workspaceId: doc.workspace_id,
+      eventType: "recipient.invited",
+      actorKind: "system",
+      actorLabel: "Juripass",
+      recipientId: recipient.id,
+      correlationId: recipient.id,
+      metadata: { recipientId: recipient.id, email: recipient.email, signingOrder: nextOrder },
+    });
+  }
+  const workspaceName = workspace.brand_display_name || workspace.name;
+  for (const { recipient, link } of links) {
+    queueEmail(db, {
+      kind: "signing_invitation",
+      to: recipient.email,
+      workspaceId: workspace.id,
+      documentId,
+      recipientId: recipient.id,
+      ...invitationEmail({
+        recipientName: recipient.name,
+        senderName: workspaceName,
+        documentTitle: doc.title,
+        workspaceName,
+        link,
+        expiresAt,
+      }),
+      meta: { link },
+    });
+  }
+  if (links.length) {
+    appendAuditEvent(db, {
+      documentId,
+      workspaceId: doc.workspace_id,
+      eventType: "document.signing_order_advanced",
+      actorKind: "system",
+      actorLabel: "Juripass",
+      metadata: { signingOrder: nextOrder, invited: links.length },
+    });
+  }
 }
 
 export function listDocuments(
@@ -798,6 +915,8 @@ export function markSignerOpened(
     actorKind: "recipient",
     actorId: recipient.id,
     actorLabel: recipient.name || recipient.email,
+    recipientId: recipient.id,
+    correlationId: recipient.id,
     ip: meta.ip,
     userAgent: meta.userAgent,
     metadata: { recipientId: recipient.id, email: recipient.email },
@@ -829,6 +948,8 @@ export function recordConsent(
     actorKind: "recipient",
     actorId: recipient.id,
     actorLabel: recipient.name || recipient.email,
+    recipientId: recipient.id,
+    correlationId: recipient.id,
     ip: meta.ip,
     userAgent: meta.userAgent,
     metadata: {
@@ -963,6 +1084,8 @@ export function saveFieldValue(
       actorKind: "recipient",
       actorId: recipient.id,
       actorLabel: recipient.name || recipient.email,
+      recipientId: recipient.id,
+      correlationId: recipient.id,
       ip: meta.ip,
       userAgent: meta.userAgent,
       metadata: { recipientId: recipient.id, fieldId: field.id, fieldType: field.type },
@@ -1058,6 +1181,8 @@ export async function completeSigning(
       actorKind: "recipient",
       actorId: recipient.id,
       actorLabel: recipient.name || recipient.email,
+      recipientId: recipient.id,
+      correlationId: recipient.id,
       ip: meta.ip,
       userAgent: meta.userAgent,
       metadata: {
@@ -1084,7 +1209,8 @@ export async function completeSigning(
           workspaceId: document.workspace_id,
           eventType: "document.finalizing",
           actorKind: "system",
-          actorLabel: "SignFlow",
+          actorLabel: "Juripass",
+          correlationId: document.id,
           metadata: {},
         });
       }
@@ -1092,6 +1218,7 @@ export async function completeSigning(
   });
 
   if (!shouldFinalize) {
+    await inviteNextSigningOrder(db, document.id);
     return {
       alreadySigned: false,
       documentCompleted: false,
@@ -1114,7 +1241,8 @@ export async function completeSigning(
       workspaceId: document.workspace_id,
       eventType: "document.finalization_failed",
       actorKind: "system",
-      actorLabel: "SignFlow",
+      actorLabel: "Juripass",
+      correlationId: document.id,
       metadata: { error: message },
     });
     return {
@@ -1178,6 +1306,7 @@ export async function finalizeDocument(db: DatabaseSync, documentId: string): Pr
         valueText: value.value_text,
         checked: value.checked === 1,
         signature,
+        signedAt: value.recorded_at,
         fontSizeHint: field.font_size,
       });
     }
@@ -1210,7 +1339,8 @@ export async function finalizeDocument(db: DatabaseSync, documentId: string): Pr
         workspaceId: doc.workspace_id,
         eventType: "document.finalized",
         actorKind: "system",
-        actorLabel: "SignFlow",
+        actorLabel: "Juripass",
+        correlationId: documentId,
         metadata: {
           completedSha256: completedHash,
           completedBytes: saved.bytes,
@@ -1222,7 +1352,8 @@ export async function finalizeDocument(db: DatabaseSync, documentId: string): Pr
         workspaceId: doc.workspace_id,
         eventType: "document.completed",
         actorKind: "system",
-        actorLabel: "SignFlow",
+        actorLabel: "Juripass",
+        correlationId: documentId,
         metadata: { completedSha256: completedHash, recipients: signers.length },
       });
     });
@@ -1257,7 +1388,7 @@ export async function finalizeDocument(db: DatabaseSync, documentId: string): Pr
         subject: `Signing complete: ${doc.title}`,
         heading: "Thank you — your signature is recorded",
         intro: [
-          `All parties have completed “${doc.title}” on ${workspace?.brand_display_name || workspace?.name || "SignFlow"}.`,
+          `All parties have completed “${doc.title}” on ${workspace?.brand_display_name || workspace?.name || "Juripass"}.`,
           "You can return to the signing link at any time to view the completion confirmation.",
         ],
         footnote: "This message confirms completion. It is not a copy of the signed document.",
@@ -1366,6 +1497,8 @@ export async function declineSigning(
       actorKind: "recipient",
       actorId: recipient.id,
       actorLabel: recipient.name || recipient.email,
+      recipientId: recipient.id,
+      correlationId: recipient.id,
       ip: meta.ip,
       userAgent: meta.userAgent,
       metadata: { reason: reason ?? null },
@@ -1375,7 +1508,7 @@ export async function declineSigning(
       workspaceId: document.workspace_id,
       eventType: "document.voided",
       actorKind: "system",
-      actorLabel: "SignFlow",
+      actorLabel: "Juripass",
       metadata: { reason: `Declined by ${recipient.name || recipient.email}` },
     });
   });
@@ -1419,6 +1552,11 @@ export async function remindRecipient(
   if (["SIGNED", "DECLINED", "REVOKED", "EXPIRED"].includes(recipient.status)) {
     throw new ConflictError("This recipient no longer needs a reminder.");
   }
+  if (!recipient.token_hash) {
+    throw new ConflictError(
+      "This signer is later in the signing order. They will be invited automatically after earlier signers complete.",
+    );
+  }
   const workspace = getWorkspace(db, doc.workspace_id);
   const token = newToken(32);
   const expiresAt = doc.expires_at || addDaysIso(env.signingLinkTtlDays);
@@ -1436,6 +1574,8 @@ export async function remindRecipient(
     actorKind: "sender",
     actorId: input.actor.id,
     actorLabel: input.actor.label,
+    recipientId: recipient.id,
+    correlationId: recipient.id,
     ip: input.ip,
     userAgent: input.userAgent,
     metadata: { recipientId: recipient.id, email: recipient.email },

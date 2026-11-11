@@ -43,11 +43,11 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
   return (
     <AuthCard
       overline="Welcome back"
-      title="Sign in to SignFlow"
+      title="Sign in to Juripass"
       description="Access your documents, templates and signing activity."
       footer={
         <p>
-          New to SignFlow?{" "}
+          New to Juripass?{" "}
           <Link href="/auth/register" className="font-semibold text-ink hover:underline">
             Create an account
           </Link>

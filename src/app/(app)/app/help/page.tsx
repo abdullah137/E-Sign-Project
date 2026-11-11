@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  Building2,
+  ClipboardList,
   FilePlus2,
-  Files,
+  FileSignature,
   KeyRound,
   LayoutTemplate,
   LifeBuoy,
@@ -18,18 +20,32 @@ export const dynamic = "force-dynamic";
 
 const guides = [
   {
+    icon: ClipboardList,
+    title: "Send a tenant inquiry",
+    body: "Invite a prospective tenant to complete a private form. Review it before the landlord is involved.",
+    href: "/app/inquiries",
+    action: "Open inquiries",
+  },
+  {
+    icon: Building2,
+    title: "Set up a property",
+    body: "Add the landlord, address and rent, then send inquiries and prepare agreements from the same profile.",
+    href: "/app/properties",
+    action: "Open properties",
+  },
+  {
+    icon: FileSignature,
+    title: "Prepare an agreement",
+    body: "Choose a precedent after the landlord approves, then invite the tenant, guarantor and landlord in order.",
+    href: "/app/agreements",
+    action: "Open agreements",
+  },
+  {
     icon: FilePlus2,
-    title: "Send your first document",
+    title: "Send a standalone document",
     body: "Upload a PDF, place fields for each recipient and send. Drafts autosave as you edit.",
     href: "/app/documents/new",
     action: "New document",
-  },
-  {
-    icon: Files,
-    title: "Track every envelope",
-    body: "Filter by status, search recipients and open the audit trail for any document.",
-    href: "/app/documents",
-    action: "All documents",
   },
   {
     icon: LayoutTemplate,
@@ -49,9 +65,9 @@ const guides = [
 
 const faqs = [
   {
-    question: "Do recipients need an account?",
+    question: "Do tenants, landlords and signers need an account?",
     answer:
-      "No. Each recipient receives a private signing link. Opening it shows the document, the e-signature consent and only the fields assigned to that recipient. Access is controlled by a high-entropy token that is stored hashed on the server.",
+      "No. A tenant completes the inquiry from a private link, a landlord approves or declines from a separate expiry-bound link, and each signer opens a private signing link. Every token is stored hashed on the server, and none of these flows exposes workspace documents, other properties or other inquiries.",
   },
   {
     question: "What happens when everyone has signed?",
@@ -69,9 +85,19 @@ const faqs = [
       "Yes. A pending document can be voided by an owner or admin. Voiding revokes every outstanding signing link and is recorded in the audit trail. Recipients who open an old link see an explanation that the document is no longer available.",
   },
   {
+    question: "Do tenants and landlords need an account?",
+    answer:
+      "No. Tenants complete the inquiry from a private link, and landlords approve or decline from a separate expiry-bound link. Both tokens are stored hashed on the server, and neither flow exposes workspace documents or other inquiries.",
+  },
+  {
+    question: "Who sees the tenant's information?",
+    answer:
+      "The workspace that created the inquiry sees it first. If the lawyer approves it, the landlord named on the property sees the submitted details. Any documents the workspace attaches are stored privately and only downloaded through the authenticated workspace. Juripass does not verify income, employment or identity automatically.",
+  },
+  {
     question: "Are these signatures legally binding?",
     answer:
-      "SignFlow records intent, identity signals and a tamper-evident audit trail, but legal effect depends on the jurisdiction, the document type and your signing policy. Obtain local legal review before relying on electronic signatures for a particular agreement; this deployment does not claim universal legal compliance.",
+      "Juripass records intent, identity signals and a tamper-evident audit trail, but legal effect depends on the jurisdiction, the document type and your signing policy. Precedents are working drafts, not legal advice. Obtain local legal review before relying on electronic signatures for a particular agreement; this deployment does not claim universal legal compliance.",
   },
   {
     question: "Where do emails go in this deployment?",
@@ -82,7 +108,7 @@ const faqs = [
   {
     question: "Which plan limits apply?",
     answer:
-      "Each plan sets a monthly document allowance, recipients per document and team seats. The billing page shows current usage. Uploading or sending beyond a limit is blocked by the server, not just hidden in the interface.",
+      "Tenant inquiries, properties, documents and recipients are unlimited on every plan. Plans differ by team seats, active templates, retention and API access. The billing page shows current usage. Limits are enforced by the server, not just hidden in the interface.",
   },
 ];
 
@@ -92,7 +118,7 @@ export default function HelpPage() {
       <PageHeader
         overline="Support"
         title="Help"
-        description="A short guide to sending, signing and proving what happened. Everything below reflects the behaviour of this deployment."
+        description="A short guide to inquiries, landlord decisions, agreements, signing and evidence. Everything below reflects the behaviour of this deployment."
       />
 
       <section className="mt-8">
@@ -104,7 +130,7 @@ export default function HelpPage() {
               <Link
                 key={guide.title}
                 href={guide.href}
-                className="group flex gap-4 rounded-card border border-hairline bg-surface p-5 transition-colors hover:border-[rgba(18,20,23,0.2)]"
+                className="group flex gap-4 rounded-card border border-hairline bg-surface p-5 transition-colors hover:border-slate/50"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-slate">
                   <Icon className="h-4.5 w-4.5" aria-hidden="true" />
@@ -151,7 +177,8 @@ export default function HelpPage() {
           <p className="mt-2 text-[12px] leading-5 text-slate">
             Documents are scoped to a single workspace and served through authenticated routes.
             Signing links are unguessable, expire with the document, and can be revoked by resending
-            or voiding. Storage paths, API keys and signing tokens are never shown to other tenants.
+            or voiding. Storage paths, API keys and signing tokens are never shown to other
+            workspaces.
           </p>
           <Link
             href="/app/settings/developers"
@@ -186,15 +213,15 @@ export default function HelpPage() {
           </p>
           <p className="mt-3 flex items-center gap-1.5 text-[11.5px] text-slate">
             <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-            support@signflow.test (not monitored)
+            support@juripass.test (not monitored)
           </p>
         </div>
       </section>
 
       <p className="mt-8 border-t border-hairline pt-5 text-[11.5px] leading-5 text-slate">
-        SignFlow provides workflow and evidence tooling, not legal advice. Electronic signature
-        requirements differ by jurisdiction and document type; validate suitability with counsel
-        before using a signed record in a legal proceeding.
+        Juripass provides tenancy workflow, document preparation and evidence tooling, not legal
+        advice. Electronic signature requirements differ by jurisdiction and document type; validate
+        suitability with counsel before using a signed record in a legal proceeding.
       </p>
     </div>
   );

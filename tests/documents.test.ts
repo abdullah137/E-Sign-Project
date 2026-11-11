@@ -84,7 +84,7 @@ describe("validateDocumentForSend", () => {
     );
   });
 
-  it("enforces the plan recipient limit", () => {
+  it("allows unlimited recipients on the Free plan", () => {
     const db = makeDb();
     const { workspaceId } = seedWorkspace(db, "free");
     const { documentId } = readyDocument(db, workspaceId, "free");
@@ -97,6 +97,27 @@ describe("validateDocumentForSend", () => {
     }
 
     const issues = validateDocumentForSend(db, getDocument(db, documentId)!, getPlan("free"));
+    expect(issues).toEqual([]);
+  });
+
+  it("enforces a configured per-document recipient limit", () => {
+    const db = makeDb();
+    const { workspaceId } = seedWorkspace(db, "free");
+    const { documentId } = readyDocument(db, workspaceId, "free");
+    for (let index = 2; index <= 4; index += 1) {
+      const recipient = addRecipient(db, documentId, {
+        id: `rcp_${index}`,
+        email: `signer${index}@example.com`,
+      });
+      addField(db, documentId, recipient, { id: `fld_${index}` });
+    }
+    const base = getPlan("free");
+    const constrained = {
+      ...base,
+      entitlements: { ...base.entitlements, recipientsPerDocument: 3 },
+    };
+
+    const issues = validateDocumentForSend(db, getDocument(db, documentId)!, constrained);
     expect(issues).toContainEqual(
       expect.objectContaining({ scope: "document", message: expect.stringMatching(/3 recipients per document/i) }),
     );
@@ -118,15 +139,32 @@ describe("validateDocumentForSend", () => {
     expect(messages).toContain("A field has an unsupported type.");
   });
 
-  it("enforces the monthly document quota", () => {
+  it("does not cap monthly documents on the Free plan", () => {
+    const db = makeDb();
+    const { workspaceId } = seedWorkspace(db, "free");
+    const { documentId } = readyDocument(db, workspaceId, "free");
+    for (let index = 2; index <= 8; index += 1) {
+      addDocument(db, workspaceId, { id: `doc_extra_${index}` });
+    }
+
+    const issues = validateDocumentForSend(db, getDocument(db, documentId)!, getPlan("free"));
+    expect(issues).toEqual([]);
+  });
+
+  it("enforces a configured monthly document quota", () => {
     const db = makeDb();
     const { workspaceId } = seedWorkspace(db, "free");
     const { documentId } = readyDocument(db, workspaceId, "free");
     for (let index = 2; index <= 5; index += 1) {
       addDocument(db, workspaceId, { id: `doc_extra_${index}` });
     }
+    const base = getPlan("free");
+    const constrained = {
+      ...base,
+      entitlements: { ...base.entitlements, documentsPerMonth: 5 },
+    };
 
-    const issues = validateDocumentForSend(db, getDocument(db, documentId)!, getPlan("free"));
+    const issues = validateDocumentForSend(db, getDocument(db, documentId)!, constrained);
     expect(issues).toContainEqual(
       expect.objectContaining({ scope: "document", message: expect.stringMatching(/5-document monthly limit/i) }),
     );

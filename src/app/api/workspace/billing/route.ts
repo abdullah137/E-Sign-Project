@@ -2,7 +2,7 @@ import { apiError, apiOk, assertSameOrigin, handleRouteError, parseJsonBody } fr
 import { isOwner } from "@/lib/auth";
 import { requireApiContext } from "@/lib/api-auth";
 import { getDb } from "@/lib/db";
-import { changePlan } from "@/lib/workspace-admin";
+import { requestPlanChange } from "@/lib/workspace-admin";
 import { planSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -16,8 +16,19 @@ export async function POST(request: Request) {
     }
     const parsed = await parseJsonBody(request, planSchema);
     if ("response" in parsed) return parsed.response;
-    const result = changePlan(getDb(), ctx.workspace.id, parsed.data.plan);
-    return apiOk({ ok: true, plan: result.plan.id, changed: result.changed });
+    const result = requestPlanChange(
+      getDb(),
+      ctx.workspace.id,
+      parsed.data.plan,
+      ctx.user.id,
+    );
+    return apiOk({
+      ok: true,
+      plan: result.plan.id,
+      changed: result.changed,
+      pending: result.pending,
+      message: result.message,
+    });
   } catch (error) {
     return handleRouteError(error);
   }

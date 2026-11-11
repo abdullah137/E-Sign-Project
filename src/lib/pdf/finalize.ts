@@ -30,10 +30,21 @@ export interface FieldForFinalization {
   valueText?: string | null;
   checked?: boolean | null;
   signature?: FinalizeSignature | null;
+  signedAt?: string | null;
   fontSizeHint?: number | null;
 }
 
 const INK = rgb(0.071, 0.078, 0.09);
+const STAMP_INK = rgb(0.42, 0.45, 0.5);
+
+function formatSignedAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(
+    date.getUTCHours(),
+  )}:${pad(date.getUTCMinutes())} UTC`;
+}
 
 function sanitize(value: string): string {
   return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\xFF]/g, "?");
@@ -130,6 +141,7 @@ export async function finalizePdf(
     }
 
     if (field.type === "signature" || field.type === "initials") {
+      let drewImage = false;
       if (field.signature) {
         let image: PDFImage | null = null;
         try {
@@ -154,10 +166,10 @@ export async function finalizePdf(
             height: drawHeight,
             rotate: degrees(rotation),
           });
-          continue;
+          drewImage = true;
         }
       }
-      if (field.valueText) {
+      if (!drewImage && field.valueText) {
         const size = shrinkToFit(
           sanitize(field.valueText),
           helvetica,
@@ -171,6 +183,33 @@ export async function finalizePdf(
           size,
           font: helvetica,
           color: INK,
+          rotate: degrees(rotation),
+        });
+      }
+      const stamp = field.signedAt ? formatSignedAt(field.signedAt) : "";
+      if (stamp) {
+        const size = Math.max(5, Math.min(7, boxHeight * 0.28));
+        const stampWidth = helvetica.widthOfTextAtSize(stamp, size);
+        const offsetX = Math.max(0, field.width * placement.displayWidth - stampWidth);
+        let point = localPoint(placement, offsetX, -(size + 2));
+        const inside =
+          point.x >= 2 &&
+          point.x <= placement.pageWidth - 2 &&
+          point.y >= size + 2 &&
+          point.y <= placement.pageHeight - 2;
+        if (!inside) {
+          point = localPoint(
+            placement,
+            offsetX,
+            field.height * placement.displayHeight + size + 4,
+          );
+        }
+        page.drawText(stamp, {
+          x: point.x,
+          y: point.y,
+          size,
+          font: helvetica,
+          color: STAMP_INK,
           rotate: degrees(rotation),
         });
       }
@@ -195,7 +234,7 @@ export async function finalizePdf(
     });
   }
 
-  doc.setProducer("SignFlow");
+  doc.setProducer("Juripass Sign Flow");
   doc.setModificationDate(new Date());
   return doc.save();
 }

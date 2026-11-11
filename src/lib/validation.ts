@@ -8,12 +8,62 @@ export const emailField = z
   .max(254)
   .email("Enter a valid email address.");
 
+const brandLogoDataUrl = z
+  .string()
+  .max(1_400_000, "The logo must be 1 MB or smaller.")
+  .regex(/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/, "Upload the logo as a PNG or JPEG image.");
+
+export const bankAccountSchema = z.object({
+  bankName: z.string().trim().min(2, "Select your bank.").max(80),
+  bankCode: z.string().trim().max(20).optional().nullable(),
+  accountName: z.string().trim().min(2, "Enter the account name.").max(120),
+  accountNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "Enter a 10-digit account number."),
+  accountType: z.enum(["Savings", "Current"], {
+    errorMap: () => ({ message: "Choose Savings or Current." }),
+  }),
+});
+
 export const registerSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(80),
   email: emailField,
   password: z.string().min(8, "Use at least 8 characters.").max(128),
   workspaceName: z.string().trim().max(80).optional(),
+  lawFirmEmail: z.union([z.literal(""), emailField]).optional(),
+  lawFirmPhone: z.string().trim().max(40).optional(),
+  lawFirmAddress: z.string().trim().max(200).optional(),
+  lawFirmLogo: z.union([z.literal(""), brandLogoDataUrl]).optional(),
+  bankName: z.string().trim().max(80).optional(),
+  bankCode: z.string().trim().max(20).optional(),
+  bankAccountName: z.string().trim().max(120).optional(),
+  bankAccountNumber: z.string().trim().max(10).optional(),
+  bankAccountType: z
+    .union([z.literal(""), z.enum(["Savings", "Current"])], {
+      errorMap: () => ({ message: "Choose Savings or Current." }),
+    })
+    .optional(),
   inviteToken: z.string().max(200).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.bankName) return;
+  if (!value.bankAccountName || value.bankAccountName.trim().length < 2) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["bankAccountName"], message: "Enter the account name." });
+  }
+  if (!value.bankAccountNumber || !/^\d{10}$/.test(value.bankAccountNumber)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["bankAccountNumber"],
+      message: "Enter a 10-digit account number.",
+    });
+  }
+  if (value.bankAccountType !== "Savings" && value.bankAccountType !== "Current") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["bankAccountType"],
+      message: "Choose Savings or Current.",
+    });
+  }
 });
 
 export const loginSchema = z.object({
@@ -105,7 +155,7 @@ export const updateMemberRoleSchema = z.object({
 });
 
 export const planSchema = z.object({
-  plan: z.enum(["free", "pro", "business"]),
+  plan: z.enum(["free", "starter", "team"]),
 });
 
 export const profileSchema = z.object({

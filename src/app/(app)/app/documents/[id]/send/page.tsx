@@ -74,14 +74,14 @@ export default async function SendDocumentPage({
                 className={cn(
                   "flex h-6 items-center gap-1.5 rounded-pill px-2.5 text-[11px] font-semibold",
                   step.current
-                    ? "bg-ink text-white"
+                    ? "bg-brand-600 text-white"
                     : "bg-success-bg text-success-text",
                 )}
               >
                 {index + 1}. {step.label}
               </span>
               {index < steps.length - 1 ? (
-                <span className="h-px w-3 bg-[rgba(18,20,23,0.16)]" aria-hidden="true" />
+                <span className="h-px w-3 bg-hairline-strong" aria-hidden="true" />
               ) : null}
             </li>
           ))}
@@ -107,6 +107,7 @@ export default async function SendDocumentPage({
           senderName={ctx.user.full_name || ctx.user.email}
           workspaceName={detail.workspace.brand_display_name || detail.workspace.name}
           documentSha256={original.sha256}
+          signingMode={detail.document.signing_mode}
         />
       </div>
 

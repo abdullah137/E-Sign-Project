@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiError, clientIp, handleRouteError } from "@/lib/api";
 import { appendAuditEvent } from "@/lib/audit";
 import { getDb } from "@/lib/db";
-import { getSigningContext } from "@/lib/documents";
+import { assertWithinRetention, getSigningContext } from "@/lib/documents";
 import { readStoredObject } from "@/lib/storage";
 import { ConflictError } from "@/lib/errors";
 
@@ -23,6 +23,7 @@ export async function GET(
     if (document.status !== "COMPLETED" || !finalizedFile) {
       throw new ConflictError("The completed PDF is not available yet.");
     }
+    assertWithinRetention(db, document);
     const bytes = readStoredObject(finalizedFile.storage_key);
     appendAuditEvent(db, {
       documentId: document.id,
@@ -31,6 +32,8 @@ export async function GET(
       actorKind: "recipient",
       actorId: recipient.id,
       actorLabel: recipient.name || recipient.email,
+      recipientId: recipient.id,
+      correlationId: recipient.id,
       ip: clientIp(request),
       userAgent: request.headers.get("user-agent"),
       metadata: { kind: "finalized", sha256: finalizedFile.sha256 },

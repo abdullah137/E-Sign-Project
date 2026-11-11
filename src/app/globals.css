@@ -3,29 +3,48 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #f8f9fa;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f3f4f5;
-  --color-surface-muted: #edeeef;
-  --color-border: rgba(18, 20, 23, 0.08);
-  --color-border-strong: rgba(18, 20, 23, 0.12);
-  --color-ink: #121417;
-  --color-ink-secondary: #45474a;
-  --color-slate: #5e6573;
-  --color-placeholder: #8e95a2;
-  --color-gold: #b89558;
-  --color-gold-hover: #a38349;
-  --color-gold-text: #8f7341;
-  --color-danger: #ba1a1a;
-  --color-success-bg: #eaf4ec;
-  --color-success-text: #285d39;
-  --color-warning-bg: #f8eedf;
-  --color-warning-text: #8f7341;
-  --radius-sm: 2px;
-  --radius-default: 4px;
-  --radius-md: 6px;
-  --radius-card: 8px;
-  --radius-modal: 12px;
+  --bg: 255 255 255;
+  --surface: 255 255 255;
+  --surface-subtle: 249 250 251;
+  --surface-muted: 243 244 246;
+  --card: 255 255 255;
+  --border: 229 231 235;
+  --border-strong: 209 213 219;
+  --ink: 8 17 31;
+  --ink-secondary: 42 50 64;
+  --slate: 82 90 104;
+  --placeholder: 152 160 172;
+  --accent: 252 201 0;
+  --accent-hover: 232 185 0;
+  --accent-text: 8 17 31;
+  --amber: 252 201 0;
+  --amber-strong: 232 185 0;
+  --amber-soft: 255 249 218;
+  --btn-dark: 8 17 31;
+  --btn-dark-text: 255 255 255;
+  --danger: 190 30 45;
+  --danger-bg: 253 231 233;
+  --success-bg: 226 244 233;
+  --success-text: 21 122 66;
+  --warning-bg: 255 249 218;
+  --warning-text: 122 74 8;
+  --brand-50: 255 250 232;
+  --brand-100: 255 243 199;
+  --brand-200: 253 230 138;
+  --brand-300: 250 204 21;
+  --brand-500: 71 85 105;
+  --brand-600: 8 17 31;
+  --brand-700: 3 8 16;
+  --brand-900: 8 17 31;
+  --brand-text: 8 17 31;
+  --focus: 8 17 31;
+  --hero: linear-gradient(180deg, #fff 0, #fff 100%);
+  --cta-glow: rgba(252, 201, 0, 0);
+  --radius-sm: 6px;
+  --radius-default: 8px;
+  --radius-md: 10px;
+  --radius-card: 16px;
+  --radius-modal: 16px;
   --radius-pill: 9999px;
   --space-xs: 6px;
   --space-sm: 12px;
@@ -37,8 +56,6 @@
   --margin-desktop: 48px;
   --margin-tablet: 32px;
   --margin-mobile: 20px;
-  --shadow-float: 0 12px 32px -4px rgba(18, 20, 23, 0.04),
-    0 4px 12px -2px rgba(18, 20, 23, 0.02);
 }
 
 html {
@@ -47,9 +64,10 @@ html {
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-ink);
-  font-family: var(--font-manrope), "Manrope", ui-sans-serif, system-ui, sans-serif;
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+  font-family: var(--font-open-sans), "Open Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 24px;
   -webkit-font-smoothing: antialiased;
@@ -57,7 +75,7 @@ body {
 }
 
 ::selection {
-  background: rgba(184, 149, 88, 0.22);
+  background: rgb(var(--brand-200) / 0.65);
 }
 
 a {
@@ -65,9 +83,9 @@ a {
 }
 
 *:focus-visible {
-  outline: 2px solid var(--color-gold-text);
+  outline: 2px solid rgb(var(--focus));
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 input,
@@ -79,7 +97,7 @@ button {
 
 @layer components {
   .card {
-    @apply rounded-card border border-hairline bg-surface;
+    @apply rounded-card border border-hairline bg-card;
   }
 
   .overline {
@@ -94,6 +112,14 @@ button {
     @apply mx-auto w-full max-w-page px-5 sm:px-8 lg:px-12;
   }
 
+  .hero-surface {
+    background-image: var(--hero);
+  }
+
+  .cta-surface {
+    background-image: radial-gradient(50% 60% at 50% 40%, var(--cta-glow), transparent 70%);
+  }
+
   .editor-grid {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
@@ -101,7 +127,7 @@ button {
 
   .thin-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(18, 20, 23, 0.18) transparent;
+    scrollbar-color: rgb(var(--slate) / 0.24) transparent;
   }
 
   .thin-scrollbar::-webkit-scrollbar {
@@ -110,7 +136,7 @@ button {
   }
 
   .thin-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(18, 20, 23, 0.16);
+    background: rgb(var(--slate) / 0.24);
     border-radius: 999px;
   }
 
@@ -126,6 +152,13 @@ button {
 
   .text-pretty {
     text-wrap: pretty;
+  }
+
+  .font-serif {
+    font-family: var(--font-open-sans), "Open Sans", ui-sans-serif, system-ui, -apple-system,
+      "Segoe UI", sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
   }
 }
 

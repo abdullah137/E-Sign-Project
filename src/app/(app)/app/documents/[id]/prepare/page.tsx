@@ -60,7 +60,7 @@ export default async function PrepareDocumentPage({
       }))}
       initialFields={fields}
       fileUrl={`/api/documents/${detail.document.id}/file`}
-      recipientLimit={plan.recipientsPerDocument}
+      recipientLimit={plan.entitlements.recipientsPerDocument}
       planName={plan.name}
     />
   );

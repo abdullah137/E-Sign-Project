@@ -21,7 +21,7 @@ export default async function TeamSettingsPage() {
       currentUserId={ctx.user.id}
       currentRole={ctx.membership.role}
       planName={plan.name}
-      seatsIncluded={plan.teamSeats}
+      seatsIncluded={plan.entitlements.teamSeats}
       seatsUsed={members.length}
     />
   );

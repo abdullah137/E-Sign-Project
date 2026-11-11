@@ -121,7 +121,7 @@ export function DocumentRowActions({
                 setOpen(false);
                 setVoidOpen(true);
               }}
-              className="flex min-h-[38px] w-full items-center gap-2.5 px-3.5 text-left text-[13px] text-danger hover:bg-[#FBEAEA]"
+              className="flex min-h-[38px] w-full items-center gap-2.5 px-3.5 text-left text-[13px] text-danger hover:bg-danger-bg"
             >
               <Undo2 className="h-4 w-4" aria-hidden="true" /> Void request…
             </button>
@@ -134,7 +134,7 @@ export function DocumentRowActions({
                 setOpen(false);
                 setDeleteOpen(true);
               }}
-              className="flex min-h-[38px] w-full items-center gap-2.5 px-3.5 text-left text-[13px] text-danger hover:bg-[#FBEAEA]"
+              className="flex min-h-[38px] w-full items-center gap-2.5 px-3.5 text-left text-[13px] text-danger hover:bg-danger-bg"
             >
               <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete draft…
             </button>

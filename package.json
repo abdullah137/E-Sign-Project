@@ -1,8 +1,8 @@
 {
-  "name": "signflow",
+  "name": "juripass",
   "version": "1.0.0",
   "private": true,
-  "description": "SignFlow — an executive-grade electronic signature workspace.",
+  "description": "Juripass — tenancy screening, landlord review and signed agreements for lawyers and rental agencies.",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",

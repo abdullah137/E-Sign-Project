@@ -25,7 +25,7 @@ export function seedWorkspace(db: DatabaseSync, plan = "pro"): { userId: string;
   ).run(userId, now, now, now);
   db.prepare(
     `INSERT INTO workspaces (id, name, owner_id, plan, brand_display_name, brand_color, created_at)
-     VALUES (?, 'Test Workspace', ?, ?, 'Test Workspace', '#B89558', ?)`,
+     VALUES (?, 'Test Workspace', ?, ?, 'Test Workspace', '#2563EB', ?)`,
   ).run(workspaceId, userId, plan, now);
   db.prepare(
     `INSERT INTO memberships (id, workspace_id, user_id, role, status, created_at)

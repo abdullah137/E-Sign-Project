@@ -261,7 +261,7 @@ export function PublicLinkExperience({
             {signingUrl ? (
               <Link
                 href={signingUrl}
-                className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded bg-ink px-6 text-sm font-medium text-white transition-colors hover:bg-[#24282F]"
+                className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-pill bg-brand-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
               >
                 Review and sign
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />

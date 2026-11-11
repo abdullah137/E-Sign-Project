@@ -43,6 +43,7 @@ export interface SigningValue {
   checked: boolean;
   signatureAssetId: string | null;
   signatureMode: string | null;
+  recordedAt: string | null;
 }
 
 export interface SigningExperienceProps {
@@ -69,6 +70,7 @@ interface LocalValue {
   checked: boolean;
   signatureAssetId: string | null;
   signatureMode: string | null;
+  recordedAt: string | null;
 }
 
 function fieldComplete(field: SigningField, value: LocalValue | undefined): boolean {
@@ -105,6 +107,7 @@ export function SigningExperience(props: SigningExperienceProps) {
         checked: saved?.checked ?? false,
         signatureAssetId: saved?.signatureAssetId ?? null,
         signatureMode: saved?.signatureMode ?? null,
+        recordedAt: saved?.recordedAt ?? null,
       };
     }
     return initial;
@@ -173,6 +176,7 @@ export function SigningExperience(props: SigningExperienceProps) {
             checked: boolean;
             signatureAssetId: string | null;
             signatureMode: string | null;
+            recordedAt: string | null;
           };
         }>(`/api/sign/${props.token}/fields/${field.id}`, {
           method: "POST",
@@ -185,6 +189,7 @@ export function SigningExperience(props: SigningExperienceProps) {
             checked: result.value.checked,
             signatureAssetId: result.value.signatureAssetId,
             signatureMode: result.value.signatureMode,
+            recordedAt: result.value.recordedAt,
           },
         }));
         savedRef.current[field.id] = JSON.stringify({
@@ -344,7 +349,7 @@ export function SigningExperience(props: SigningExperienceProps) {
   };
 
   const brandBar = (
-    <header className="sticky top-0 z-30 border-b border-hairline bg-[rgba(248,249,250,0.94)] backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-hairline bg-card/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
         <Logo href="/" compact />
         <div className="min-w-0 flex-1">
@@ -391,7 +396,7 @@ export function SigningExperience(props: SigningExperienceProps) {
       <div className="min-h-screen bg-bg">
         {brandBar}
         <main className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#FBEAEA] text-danger">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-danger-bg text-danger">
             <X className="h-6 w-6" aria-hidden="true" />
           </span>
           <h1 className="mt-5 font-serif text-[32px] leading-10 text-ink">You declined to sign</h1>
@@ -438,7 +443,7 @@ export function SigningExperience(props: SigningExperienceProps) {
               {waitingForOthers
                 ? `Thank you, ${props.recipientName}. The other recipients still need to sign. You can return to this link at any time to check the status.`
                 : phase === "finalizing"
-                  ? "All required signatures are recorded. SignFlow is generating the completed PDF — this usually takes a few seconds."
+                  ? "All required signatures are recorded. Juripass is generating the completed PDF — this usually takes a few seconds."
                   : `“${props.documentTitle}” is complete. A copy is available to download, and the sender has been notified.`}
             </p>
 
@@ -463,7 +468,7 @@ export function SigningExperience(props: SigningExperienceProps) {
               <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <a
                   href={`/api/sign/${props.token}/download`}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded border border-transparent bg-ink px-6 text-sm font-medium text-white hover:bg-[#24282F]"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-pill border border-transparent bg-brand-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
                 >
                   <Download className="h-4 w-4" aria-hidden="true" />
                   Download signed PDF
@@ -472,7 +477,7 @@ export function SigningExperience(props: SigningExperienceProps) {
                   href={`/api/sign/${props.token}/file`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded border border-[rgba(18,20,23,0.12)] px-6 text-sm font-medium text-ink hover:bg-surface-subtle"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded border border-hairline-strong px-6 text-sm font-medium text-ink hover:bg-surface-subtle"
                 >
                   View original
                 </a>
@@ -592,7 +597,7 @@ export function SigningExperience(props: SigningExperienceProps) {
                   href={`/api/sign/${props.token}/file`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex h-11 items-center justify-center rounded border border-[rgba(18,20,23,0.12)] px-5 text-sm font-medium text-ink hover:bg-surface"
+                  className="inline-flex h-11 items-center justify-center rounded border border-hairline-strong px-5 text-sm font-medium text-ink hover:bg-surface"
                 >
                   View document
                 </a>
@@ -813,6 +818,7 @@ function SigningFieldBox({
         {field.required ? " *" : ""}
       </span>
       {field.type === "signature" || field.type === "initials" ? (
+        <>
         <button
           type="button"
           onClick={onOpenSignature}
@@ -843,6 +849,12 @@ function SigningFieldBox({
             </span>
           ) : null}
         </button>
+        {value?.signatureAssetId && value.recordedAt ? (
+          <span className="pointer-events-none absolute -bottom-[14px] right-0 whitespace-nowrap rounded-sm bg-white/90 px-1 text-[8px] font-medium leading-[14px] text-slate">
+            {formatDateTime(value.recordedAt)}
+          </span>
+        ) : null}
+        </>
       ) : field.type === "checkbox" ? (
         <button
           type="button"
@@ -862,7 +874,7 @@ function SigningFieldBox({
         <div
           className={cn(
             "h-full w-full overflow-hidden rounded-sm border bg-white/80",
-            complete ? "border-[rgba(40,93,57,0.35)]" : "border-gold",
+            complete ? "border-success-text/35" : "border-gold",
           )}
         >
           {field.type === "address" ? (

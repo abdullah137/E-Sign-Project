@@ -148,6 +148,8 @@ export function createTemplateFromDocument(
     throw new ValidationError("The description must be 280 characters or fewer.");
   }
 
+  assertTemplateQuota(db, input.workspaceId);
+
   const slots: TemplateRecipientSlot[] = recipients.map((recipient, index) => ({
     index,
     name: recipient.name,
@@ -221,14 +223,34 @@ export function assertDocumentQuota(db: DatabaseSync, workspaceId: string): void
     | undefined;
   if (!workspace) throw new NotFoundError("Workspace not found.");
   const plan = getPlan(workspace.plan);
+  const quota = plan.entitlements.documentsPerMonth;
+  if (quota === null) return;
   const row = db
     .prepare(
       "SELECT COUNT(*) AS count FROM documents WHERE workspace_id = ? AND status != 'DELETED' AND created_at >= ?",
     )
     .get(workspaceId, startOfMonthIso()) as { count: number };
-  if (Number(row.count) >= plan.documentsPerMonth) {
+  if (Number(row.count) >= quota) {
     throw new ConflictError(
-      `This workspace has reached the ${plan.documentsPerMonth}-document monthly limit on the ${plan.name} plan.`,
+      `This workspace has reached the ${quota}-document monthly limit on the ${plan.name} plan.`,
+    );
+  }
+}
+
+export function assertTemplateQuota(db: DatabaseSync, workspaceId: string): void {
+  const workspace = db.prepare("SELECT plan FROM workspaces WHERE id = ?").get(workspaceId) as
+    | { plan: string }
+    | undefined;
+  if (!workspace) throw new NotFoundError("Workspace not found.");
+  const plan = getPlan(workspace.plan);
+  const limit = plan.entitlements.templates;
+  if (limit === null) return;
+  const row = db
+    .prepare("SELECT COUNT(*) AS count FROM templates WHERE workspace_id = ? AND status = 'active'")
+    .get(workspaceId) as { count: number };
+  if (Number(row.count) >= limit) {
+    throw new ConflictError(
+      `The ${plan.name} plan includes ${limit} active template${limit === 1 ? "" : "s"}. Archive a template or upgrade to save another.`,
     );
   }
 }
@@ -471,6 +493,15 @@ export function createPublicLink(
       "Public links are available for templates with exactly one recipient. Multi-party templates must be prepared manually.",
     );
   }
+  const workspace = db.prepare("SELECT plan FROM workspaces WHERE id = ?").get(input.workspaceId) as
+    | { plan: string }
+    | undefined;
+  if (!workspace) throw new NotFoundError("Workspace not found.");
+  if (!getPlan(workspace.plan).entitlements.publicSigningLinks) {
+    throw new ConflictError(
+      "Public signing links are available on Starter and Team. Upgrade to share a template link.",
+    );
+  }
   const name = input.name.trim();
   if (name.length < 2) throw new ValidationError("Give this link a name.");
   if (name.length > 80) throw new ValidationError("The name must be 80 characters or fewer.");
@@ -525,6 +556,7 @@ export type PublicLinkLookup =
         id: string;
         name: string;
         owner_id: string;
+        plan: string;
         brand_display_name: string | null;
         brand_color: string | null;
       };
@@ -548,12 +580,15 @@ export function getPublicLinkContext(db: DatabaseSync, rawToken: string): Public
     .get(row.template_id, row.workspace_id) as unknown as TemplateRow | undefined;
   if (!template || template.status !== "active") return { ok: false, reason: "unavailable" };
   const workspace = db
-    .prepare("SELECT id, name, owner_id, brand_display_name, brand_color FROM workspaces WHERE id = ?")
+    .prepare(
+      "SELECT id, name, owner_id, plan, brand_display_name, brand_color FROM workspaces WHERE id = ?",
+    )
     .get(row.workspace_id) as
     | {
         id: string;
         name: string;
         owner_id: string;
+        plan: string;
         brand_display_name: string | null;
         brand_color: string | null;
       }
@@ -611,6 +646,9 @@ export async function redeemPublicLink(
   const lookup = getPublicLinkContext(db, input.rawToken);
   if (!lookup.ok) throw new ValidationError("This public link is no longer available.");
   const { link, template, workspace } = lookup;
+  if (!getPlan(workspace.plan).entitlements.publicSigningLinks) {
+    throw new ValidationError("This public link is no longer available.");
+  }
   const email = input.email.trim();
   if (!isValidEmail(email)) throw new ValidationError("Enter a valid email address.");
   const name = input.name.trim();

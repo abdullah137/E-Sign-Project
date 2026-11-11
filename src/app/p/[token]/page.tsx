@@ -53,7 +53,7 @@ export default async function PublicLinkPage({ params }: { params: Promise<{ tok
 
   return (
     <div className="flex min-h-screen flex-col bg-bg">
-      <header className="border-b border-hairline bg-[rgba(248,249,250,0.94)]">
+      <header className="border-b border-hairline bg-card/90">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
           <Logo href="/" />
           <span className="text-[11px] uppercase tracking-overline text-slate">Secure request</span>
@@ -74,9 +74,9 @@ export default async function PublicLinkPage({ params }: { params: Promise<{ tok
       </main>
       <footer className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 text-[11px] text-slate sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p>Powered by SignFlow. Electronic signature records include a tamper-evident audit trail.</p>
+          <p>Powered by Juripass Sign Flow. Electronic signature records include a tamper-evident audit trail.</p>
           <Link href="/" className="hover:text-ink hover:underline">
-            About SignFlow
+            About Juripass
           </Link>
         </div>
       </footer>
@@ -96,7 +96,7 @@ function InvalidPublicLink({
       ? "bg-warning-bg text-gold-text"
       : copy.icon === "link"
         ? "bg-surface-muted text-slate"
-        : "bg-[#FBEAEA] text-danger";
+        : "bg-danger-bg text-danger";
 
   return (
     <div className="flex min-h-screen flex-col bg-bg">
@@ -117,7 +117,7 @@ function InvalidPublicLink({
         </div>
         <p className="mt-6 text-center text-[12px] text-slate">
           <Link href="/" className="font-medium text-gold-text underline-offset-2 hover:underline">
-            Learn about SignFlow
+            Learn about Juripass
           </Link>
         </p>
       </main>

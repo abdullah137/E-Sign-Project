@@ -2,32 +2,81 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Palette } from "lucide-react";
+import { Palette, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FormField } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/client";
 
-const PRESET_COLORS = ["#B89558", "#1F4E5A", "#3E7B51", "#6B4E8C", "#8A3B3B", "#121417"];
+const PRESET_COLORS = ["#0D294D", "#1E406B", "#3A5C8A", "#FAB641", "#111827", "#475569"];
 
 export function BrandingForm({
   workspaceName,
   brandDisplayName,
   brandColor,
+  logoAssetId: initialLogoAssetId,
   canEdit,
 }: {
   workspaceName: string;
   brandDisplayName: string | null;
   brandColor: string | null;
+  logoAssetId: string | null;
   canEdit: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [name, setName] = useState(workspaceName);
   const [display, setDisplay] = useState(brandDisplayName ?? "");
-  const [color, setColor] = useState(brandColor ?? "#B89558");
+  const [color, setColor] = useState(brandColor ?? "#0D294D");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoAssetId, setLogoAssetId] = useState(initialLogoAssetId);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  const uploadLogo = async (file: File | null) => {
+    setLogoError(null);
+    if (!file) return;
+    if (file.type !== "image/png" && file.type !== "image/jpeg") {
+      setLogoError("Choose a PNG or JPEG image.");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setLogoError("The logo must be 1 MB or smaller.");
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      const body = new FormData();
+      body.set("logo", file);
+      const result = await apiFetch<{ logoAssetId: string }>("/api/workspace/branding/logo", {
+        method: "POST",
+        body,
+      });
+      setLogoAssetId(result.logoAssetId);
+      toast({ title: "Firm logo updated", variant: "success" });
+      router.refresh();
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "The logo could not be uploaded.");
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    setLogoError(null);
+    setLogoBusy(true);
+    try {
+      await apiFetch("/api/workspace/branding/logo", { method: "DELETE" });
+      setLogoAssetId(null);
+      toast({ title: "Firm logo removed", variant: "success" });
+      router.refresh();
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "The logo could not be removed.");
+    } finally {
+      setLogoBusy(false);
+    }
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -66,6 +115,66 @@ export function BrandingForm({
           </div>
         </div>
 
+        <div className="mt-5 max-w-xl">
+          <p className="mb-1.5 text-[13px] font-medium text-ink">Firm logo</p>
+          <div className="flex flex-wrap items-center gap-3">
+            {logoAssetId ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/api/workspace/branding/logo?v=${encodeURIComponent(logoAssetId)}`}
+                alt="Firm logo"
+                className="h-16 w-28 rounded border border-hairline bg-white object-contain p-1"
+              />
+            ) : (
+              <div className="flex h-16 w-28 items-center justify-center rounded border border-dashed border-hairline-strong text-[11px] text-slate">
+                No logo
+              </div>
+            )}
+            {canEdit ? (
+              <div>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-hairline bg-card px-3 py-1.5 text-[12px] font-medium text-ink hover:border-brand-500">
+                    <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                    {logoBusy ? "Uploading…" : logoAssetId ? "Change logo" : "Upload logo"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="sr-only"
+                      disabled={logoBusy}
+                      onChange={(event) => {
+                        void uploadLogo(event.target.files?.[0] ?? null);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {logoAssetId ? (
+                    <button
+                      type="button"
+                      onClick={() => void removeLogo()}
+                      disabled={logoBusy}
+                      className="text-[12px] font-medium text-slate hover:text-ink hover:underline disabled:cursor-not-allowed"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-[11.5px] leading-5 text-slate">
+                  PNG or JPEG up to 1 MB. Used on agreement and inquiry letterheads.
+                </p>
+                {logoError ? (
+                  <p className="mt-1 text-[12px] leading-5 text-danger" role="alert">
+                    {logoError}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-[12px] leading-5 text-slate">
+                Only workspace owners and admins can change the logo.
+              </p>
+            )}
+          </div>
+        </div>
+
         <form onSubmit={submit} className="mt-6 max-w-xl space-y-5" noValidate>
           <FormField label="Workspace name" htmlFor="workspaceName" required>
             <Input
@@ -100,7 +209,7 @@ export function BrandingForm({
                 value={color}
                 onChange={(event) => setColor(event.target.value.toUpperCase())}
                 disabled={!canEdit}
-                className="h-11 w-14 cursor-pointer rounded border border-[rgba(18,20,23,0.12)] bg-surface p-1 disabled:cursor-not-allowed"
+                className="h-11 w-14 cursor-pointer rounded border border-hairline-strong bg-surface p-1 disabled:cursor-not-allowed"
                 aria-label="Brand colour"
               />
               <Input
@@ -117,7 +226,7 @@ export function BrandingForm({
                   type="button"
                   onClick={() => setColor(preset)}
                   disabled={!canEdit}
-                  className="h-7 w-7 rounded-full border border-[rgba(18,20,23,0.12)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-text focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+                  className="h-7 w-7 rounded-full border border-hairline-strong transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed"
                   style={{ backgroundColor: preset }}
                   aria-label={`Use ${preset}`}
                 />
@@ -152,12 +261,21 @@ export function BrandingForm({
         <div className="mt-4 rounded-card border border-hairline bg-surface-subtle/40 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span
-                className="flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-semibold text-white"
-                style={{ backgroundColor: color }}
-              >
-                {(display || name).trim().charAt(0).toUpperCase()}
-              </span>
+              {logoAssetId ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/workspace/branding/logo?v=${encodeURIComponent(logoAssetId)}`}
+                  alt=""
+                  className="h-8 w-14 rounded border border-hairline bg-white object-contain p-0.5"
+                />
+              ) : (
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-semibold text-white"
+                  style={{ backgroundColor: color }}
+                >
+                  {(display || name).trim().charAt(0).toUpperCase()}
+                </span>
+              )}
               <span className="text-[13px] font-semibold text-ink">{display || name}</span>
             </div>
             <span className="text-[11px] uppercase tracking-overline text-slate">Secure signing</span>

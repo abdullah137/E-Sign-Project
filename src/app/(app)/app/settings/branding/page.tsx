@@ -12,6 +12,7 @@ export default async function BrandingSettingsPage() {
       workspaceName={ctx.workspace.name}
       brandDisplayName={ctx.workspace.brand_display_name}
       brandColor={ctx.workspace.brand_color}
+      logoAssetId={ctx.workspace.brand_logo_asset_id}
       canEdit={isAdmin(ctx.membership.role)}
     />
   );
