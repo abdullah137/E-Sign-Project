@@ -147,9 +147,10 @@ export function NewInquiryForm({
           <p className="rounded-lg border border-hairline bg-card px-4 py-3 text-[12.5px] leading-5 text-slate">
             {[selected.address_line1, selected.city, selected.state].filter(Boolean).join(", ")} ·{" "}
             {selected.category} · {selected.property_type} ·{" "}
+            {selected.listing_type === "part" ? "Part of building" : "Entire property"} ·{" "}
             {selectedUnit
               ? `Unit ${selectedUnit.unit_number} · ${selectedUnit.bedrooms} bed · ${formatMoney(selectedUnit.rent_amount_cents)} per month`
-              : `${selected.bedrooms} bedroom${selected.bedrooms === 1 ? "" : "s"} · ${formatMoney(selected.rent_amount_cents)} per month`}
+              : `${selected.bedrooms} bedroom${selected.bedrooms === 1 ? "" : "s"} · ${selected.bathrooms} bathroom${selected.bathrooms === 1 ? "" : "s"} · ${formatMoney(selected.rent_amount_cents)} per month`}
           </p>
         ) : null}
         <FormField

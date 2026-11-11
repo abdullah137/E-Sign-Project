@@ -291,6 +291,8 @@ CREATE TABLE IF NOT EXISTS properties (
   state TEXT NOT NULL,
   postal_code TEXT,
   bedrooms INTEGER NOT NULL DEFAULT 1,
+  bathrooms INTEGER NOT NULL DEFAULT 1,
+  listing_type TEXT NOT NULL DEFAULT 'entire',
   rent_amount_cents INTEGER NOT NULL DEFAULT 0,
   inquiry_fee_cents INTEGER NOT NULL DEFAULT 0,
   image_storage_key TEXT,
@@ -302,6 +304,19 @@ CREATE TABLE IF NOT EXISTS properties (
 );
 CREATE INDEX IF NOT EXISTS idx_properties_ws ON properties(workspace_id, status);
 CREATE INDEX IF NOT EXISTS idx_properties_landlord ON properties(landlord_id);
+
+CREATE TABLE IF NOT EXISTS property_images (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  storage_key TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  original_filename TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_property_images ON property_images(property_id, position);
+CREATE INDEX IF NOT EXISTS idx_property_images_ws ON property_images(workspace_id);
 
 CREATE TABLE IF NOT EXISTS property_units (
   id TEXT PRIMARY KEY,
@@ -620,6 +635,8 @@ const PROPERTY_COLUMNS: Array<[string, string]> = [
   ["inquiry_fee_cents", "INTEGER NOT NULL DEFAULT 0"],
   ["image_storage_key", "TEXT"],
   ["image_mime", "TEXT"],
+  ["bathrooms", "INTEGER NOT NULL DEFAULT 1"],
+  ["listing_type", "TEXT NOT NULL DEFAULT 'entire'"],
 ];
 
 const INQUIRY_COLUMNS: Array<[string, string]> = [
@@ -698,6 +715,17 @@ export function migrateSchema(db: DatabaseSync): void {
     UPDATE subscriptions SET plan = 'team' WHERE plan = 'business';
     UPDATE invoices SET plan = 'starter' WHERE plan = 'pro';
     UPDATE invoices SET plan = 'team' WHERE plan = 'business';
+
+    INSERT INTO property_images
+      (id, workspace_id, property_id, storage_key, mime, original_filename, position, created_at)
+    SELECT 'pimg_' || lower(hex(randomblob(8))), p.workspace_id, p.id, p.image_storage_key,
+           COALESCE(p.image_mime, 'image/jpeg'), 'Property image', 0, p.created_at
+      FROM properties p
+     WHERE p.image_storage_key IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM property_images pi WHERE pi.property_id = p.id);
+
+    UPDATE properties SET image_storage_key = NULL, image_mime = NULL
+     WHERE image_storage_key IS NOT NULL;
   `);
 }
 

@@ -4,7 +4,10 @@ import { PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { addDocument, makeDb, seedWorkspace } from "./helpers";
 import { addDaysIso, hashToken, newId, nowIso } from "@/lib/ids";
 import { sendDocument } from "@/lib/documents";
+import { buildAgreementPdf } from "@/lib/pdf/agreement";
+import { getPrecedent } from "@/lib/precedents";
 import {
+  addPropertyImages,
   createAgreementFromPrecedent,
   createInquiry,
   createLandlord,
@@ -31,6 +34,8 @@ import {
   listUnits,
   landlordDecision,
   parsePassportPhotoDataUrl,
+  readPropertyImage,
+  removePropertyImages,
   reviewInquiry,
   submitInquiry,
   updateInquiry,
@@ -278,7 +283,135 @@ describe("review and landlord decision order", () => {
   });
 });
 
+describe("residential agreement PDF", () => {
+  it("lays out the landlord and tenant execution blocks with signing fields", async () => {
+    const result = await buildAgreementPdf({
+      precedent: getPrecedent("residential-tenancy")!,
+      workspaceName: "Hart & Lane",
+      title: "Residential tenancy agreement",
+      landlordName: "Palm Court Properties Ltd",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Priya Raman",
+      tenantEmail: "priya@example.com",
+      guarantors: [{ name: "Arun Raman", email: "arun@example.com", relationship: "Father" }],
+      propertyLabel: "Palm Court (PC-001)",
+      propertyAddress: "12 Marina Road, Lagos Island, Lagos",
+      rentLabel: "NGN 2,500,000 per month",
+      monthlyRent: "NGN 2,500,000",
+      annualRent: "NGN 30,000,000",
+      startDate: "1 December 2026",
+      endDate: "30 November 2027",
+      jurisdiction: "Lagos, Lagos",
+      preparedBy: "Dana Owner",
+      lawyer: { name: "Tolu Adeyemi", email: "tolu@example.com", firmName: "Hart & Lane" },
+    });
+
+    expect(new TextDecoder().decode(result.bytes.slice(0, 5))).toBe("%PDF-");
+    expect(result.pageCount).toBe(2);
+    expect(result.recipientKeys).toEqual(["tenant", "guarantor-0", "landlord", "lawyer"]);
+    expect(result.placements).toHaveLength(8);
+    for (const placement of result.placements) {
+      expect(placement.pageIndex).toBe(1);
+      expect(placement.x).toBeGreaterThanOrEqual(0);
+      expect(placement.y).toBeGreaterThanOrEqual(0);
+      expect(placement.x + placement.width).toBeLessThanOrEqual(1);
+      expect(placement.y + placement.height).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
 describe("editable records", () => {
+  it("stores the property listing type and bathroom count", () => {
+    const db = makeDb();
+    const { userId, workspaceId } = seedWorkspace(db);
+    const landlord = createLandlord(db, {
+      workspaceId,
+      userId,
+      userLabel: "Dana Owner",
+      name: "Amara Okafor",
+      email: "amara@example.com",
+      phone: "+1 512 555 0100",
+    });
+    const input = {
+      workspaceId,
+      userId,
+      userLabel: "Dana Owner",
+      landlordId: landlord.id,
+      name: "7B Cedar Court",
+      propertyType: "Flat",
+      addressLine1: "7B Cedar Court",
+      city: "Austin",
+      state: "TX",
+      bedrooms: 2,
+      rentAmountCents: 180_000,
+    };
+    const property = createProperty(db, { ...input, listingType: "part", bathrooms: 1 });
+    expect(property.listing_type).toBe("part");
+    expect(property.bathrooms).toBe(1);
+
+    const updated = updateProperty(db, {
+      ...input,
+      propertyId: property.id,
+      actor: { id: userId, label: "Dana Owner" },
+      listingType: "entire",
+      bathrooms: 2,
+    });
+    expect(updated.listing_type).toBe("entire");
+    expect(updated.bathrooms).toBe(2);
+  });
+
+  it("stores multiple property photos in order and removes them individually", () => {
+    const db = makeDb();
+    const { userId, workspaceId, property } = seedLandlordAndProperty(db);
+    const actor = { id: userId, label: "Dana Owner" };
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+
+    const images = addPropertyImages(db, {
+      workspaceId,
+      propertyId: property.id,
+      actor,
+      files: [
+        { bytes: png, mediaType: "image/png", filename: "front.png" },
+        { bytes: png, mediaType: "image/png", filename: "kitchen.png" },
+      ],
+    });
+    expect(images).toHaveLength(2);
+    expect(images.map((image) => image.original_filename)).toEqual(["front.png", "kitchen.png"]);
+    expect(images.map((image) => image.position)).toEqual([0, 1]);
+
+    const listed = listProperties(db, workspaceId).find((row) => row.id === property.id);
+    expect(listed?.images).toHaveLength(2);
+
+    expect(readPropertyImage(db, workspaceId, property.id)?.bytes.equals(png)).toBe(true);
+    expect(readPropertyImage(db, workspaceId, property.id, images[1].id)?.bytes.equals(png)).toBe(true);
+
+    const other = addSecondWorkspace(db);
+    expect(readPropertyImage(db, other.workspaceId, property.id, images[0].id)).toBeNull();
+    expect(() =>
+      removePropertyImages(db, {
+        workspaceId: other.workspaceId,
+        propertyId: property.id,
+        actor,
+      }),
+    ).toThrow(/not found/i);
+
+    const remaining = removePropertyImages(db, {
+      workspaceId,
+      propertyId: property.id,
+      imageId: images[0].id,
+      actor,
+    });
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(images[1].id);
+    expect(readPropertyImage(db, workspaceId, property.id, images[0].id)).toBeNull();
+
+    deleteProperty(db, { workspaceId, propertyId: property.id, actor });
+    expect(listProperties(db, workspaceId)).toHaveLength(0);
+  });
+
   it("creates, updates and deletes property units with unique numbers", () => {
     const db = makeDb();
     const { userId, workspaceId, landlord, property } = seedLandlordAndProperty(db);

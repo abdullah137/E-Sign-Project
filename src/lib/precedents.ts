@@ -7,42 +7,53 @@ export interface Precedent {
   clauses: Array<{ heading: string; body: string }>;
 }
 
+export const RESIDENTIAL_TENANCY = {
+  documentTitle: "TENANCY AGREEMENT GOVERNING THE OCCUPATION OF RESIDENTIAL PREMISES",
+  tenantObligations: [
+    "Will pay the service charges (electricity, water and waste disposal bills) during the tenancy.",
+    "Will be responsible jointly with the other tenants for the maintenance and cleaning of the said property.",
+    "Will permit the Landlord and its agents at reasonable times to examine the state and condition of the accommodation.",
+    "Will not make or permit to be made any alteration or addition to the said accommodation.",
+    "Will not cause any nuisance or disturbance to any of the other tenants in the property or in the adjoining flat.",
+    "Will deliver possession of the flat in a tenantable condition at the expiration or termination of the tenancy.",
+    "The Landlord, acting through its agents, reserves the right to eject any tenant who defaults on the rules and regulations.",
+    "The Tenant hereby agrees not to transfer or sublet the property to any other persons.",
+  ],
+  landlordUndertakings: [
+    "Insurance of the property against fire, lightning and tornado;",
+    "Structural repairs and exterior decorations;",
+    "That the Tenant paying the agreed rent and observing and performing the several conditions in this Agreement shall peaceably hold and enjoy his/her tenancy without any interruption by the Landlord or any person rightfully claiming under or in trust for the Landlord.",
+  ],
+  witness:
+    "In witness whereof the Landlord and the Tenant have caused their hands to be hereunto affixed the day and year first above written.",
+};
+
 export const PRECEDENTS: Precedent[] = [
   {
     id: "residential-tenancy",
     title: "Residential tenancy agreement",
     category: "Tenancy",
     description:
-      "A standard residential lease linking the landlord, tenant and guarantor with rent, term and property details.",
+      "A standard residential tenancy following the landlord and tenant agreement format, with recitals, tenant obligations, landlord undertakings and execution blocks.",
     parties: ["Landlord", "Tenant", "Guarantor"],
     clauses: [
       {
-        heading: "1. Property",
-        body: "The landlord lets the property described in this agreement to the tenant for the term stated above. The tenant accepts the property in its current condition, subject to the inventory and any agreed schedule of condition.",
+        heading: "Preamble and recitals",
+        body: 'THIS TENANCY AGREEMENT is made between the Landlord and the Tenant. The Landlord is the owner of the property, and the Tenant has agreed to take the property at the yearly rent stated in the agreement, payable monthly in advance, with the first payment payable on execution.',
       },
       {
-        heading: "2. Rent and deposit",
-        body: "The tenant will pay the rent on the due date stated in this agreement without deduction or set-off. A deposit may be held in accordance with applicable tenancy law and returned after the tenancy ends, less any agreed deductions.",
+        heading: "Tenant obligations (i–viii)",
+        body: RESIDENTIAL_TENANCY.tenantObligations
+          .map((clause, index) => `${index + 1}. ${clause}`)
+          .join(" "),
       },
       {
-        heading: "3. Use and care",
-        body: "The tenant will use the property as a private residence, keep it clean and in good repair, and promptly report damage or defects to the landlord or the lawyer acting for the landlord.",
+        heading: "Landlord undertakings",
+        body: RESIDENTIAL_TENANCY.landlordUndertakings.join(" "),
       },
       {
-        heading: "4. Utilities and outgoings",
-        body: "Unless stated otherwise, the tenant is responsible for utilities consumed at the property and the landlord is responsible for structural repairs and charges expressly allocated to the landlord.",
-      },
-      {
-        heading: "5. Guarantee",
-        body: "Each guarantor guarantees the tenant's payment and performance obligations under this agreement. The guarantee is a continuing obligation and is enforced only in accordance with applicable law.",
-      },
-      {
-        heading: "6. Ending the tenancy",
-        body: "Either party may end the tenancy only by giving the notice required by law or by written agreement. The tenant must return all keys and leave the property in the condition required by this agreement.",
-      },
-      {
-        heading: "7. Governing law",
-        body: "This agreement is governed by the laws of the jurisdiction stated in the key terms. Any dispute will first be referred to good-faith negotiation before formal proceedings.",
+        heading: "Witness and execution",
+        body: `${RESIDENTIAL_TENANCY.witness} The Landlord and the Tenant sign below, with a witness for each party.`,
       },
     ],
   },

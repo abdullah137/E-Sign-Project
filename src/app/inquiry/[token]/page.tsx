@@ -9,7 +9,6 @@ import {
   formatMoney,
   getInquiryByTenantToken,
   inquiryFeeCentsFor,
-  listUnits,
   type InquiryStatus,
   type PublicInquiryLookup,
 } from "@/lib/tenancy";
@@ -68,7 +67,6 @@ export default async function TenantInquiryPage({ params }: { params: Promise<{ 
   const address = [property.address_line1, property.city, property.state, property.postal_code]
     .filter(Boolean)
     .join(", ");
-  const units = inquiry.status === "DRAFT" ? listUnits(db, inquiry.workspace_id, property.id) : [];
 
   return (
     <PublicShell workspaceName={workspaceName}>
@@ -81,7 +79,6 @@ export default async function TenantInquiryPage({ params }: { params: Promise<{ 
             propertyReference={property.reference}
             propertyAddress={address}
             rentLabel={`${formatMoney(unit?.rent_amount_cents || property.rent_amount_cents)} per month`}
-            units={units}
             initialUnitId={inquiry.unit_id}
             applicantName={inquiry.applicant_name}
             applicantEmail={inquiry.applicant_email}

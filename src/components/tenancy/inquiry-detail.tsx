@@ -34,6 +34,7 @@ import type {
   GuarantorRow,
   InquiryFileRow,
   InquiryRow,
+  PropertyListingType,
   PropertyUnitListRow,
   PropertyUnitRow,
 } from "@/lib/tenancy";
@@ -62,6 +63,9 @@ export function InquiryDetail({
     name: string;
     reference: string;
     address: string;
+    bedrooms: number;
+    bathrooms: number;
+    listingType: PropertyListingType;
     rentAmountCents: number;
     defaultInquiryFeeCents: number;
   };
@@ -616,8 +620,13 @@ export function InquiryDetail({
                   Unit {unit.unit_number} · {unit.unit_type} · {unit.bedrooms} bed
                 </p>
               ) : (
-                <p className="text-[12.5px] text-slate">Whole property</p>
+                <p className="text-[12.5px] text-slate">
+                  Whole property · {property.bedrooms} bed · {property.bathrooms} bath
+                </p>
               )}
+              <p className="text-[12.5px] text-slate">
+                {property.listingType === "part" ? "Part of building" : "Entire property"}
+              </p>
               <p className="text-[12.5px] text-slate">
                 {formatMoney(unit?.rent_amount_cents || property.rentAmountCents)} per month
               </p>

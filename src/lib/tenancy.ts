@@ -71,6 +71,8 @@ export interface LandlordRow {
   updated_at: string;
 }
 
+export type PropertyListingType = "entire" | "part";
+
 export interface PropertyRow {
   id: string;
   workspace_id: string;
@@ -87,13 +89,32 @@ export interface PropertyRow {
   state: string;
   postal_code: string | null;
   bedrooms: number;
+  bathrooms: number;
+  listing_type: PropertyListingType;
   rent_amount_cents: number;
   inquiry_fee_cents: number;
-  image_storage_key: string | null;
-  image_mime: string | null;
   status: PropertyStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface PropertyImageRow {
+  id: string;
+  workspace_id: string;
+  property_id: string;
+  storage_key: string;
+  mime: string;
+  original_filename: string | null;
+  position: number;
+  created_at: string;
+}
+
+export interface PropertyImage {
+  id: string;
+  mime: string;
+  original_filename: string | null;
+  position: number;
+  created_at: string;
 }
 
 export interface PropertyListRow extends PropertyRow {
@@ -101,6 +122,7 @@ export interface PropertyListRow extends PropertyRow {
   landlord_email: string;
   inquiry_count: number;
   active_tenants: number;
+  images: PropertyImage[];
 }
 
 export type UnitOccupancy = "available" | "occupied" | "maintenance";
@@ -694,7 +716,55 @@ export function listProperties(db: DatabaseSync, workspaceId: string): PropertyL
        WHERE p.workspace_id = ? ORDER BY p.created_at DESC`,
     )
     .all(workspaceId);
-  return plainRows<PropertyListRow>(rows);
+  const properties = plainRows<PropertyListRow>(rows);
+  const imagesByProperty = new Map<string, PropertyImage[]>();
+  const imageRows = db
+    .prepare(
+      `SELECT id, property_id, mime, original_filename, position, created_at
+         FROM property_images WHERE workspace_id = ?
+        ORDER BY position ASC, created_at ASC`,
+    )
+    .all(workspaceId) as unknown as Array<PropertyImage & { property_id: string }>;
+  for (const image of imageRows) {
+    const list = imagesByProperty.get(image.property_id) ?? [];
+    list.push({
+      id: image.id,
+      mime: image.mime,
+      original_filename: image.original_filename,
+      position: image.position,
+      created_at: image.created_at,
+    });
+    imagesByProperty.set(image.property_id, list);
+  }
+  return properties.map((property) => ({
+    ...property,
+    images: imagesByProperty.get(property.id) ?? [],
+  }));
+}
+
+export function listPropertyImages(
+  db: DatabaseSync,
+  workspaceId: string,
+  propertyId: string,
+): PropertyImageRow[] {
+  return plainRows<PropertyImageRow>(
+    db
+      .prepare(
+        `SELECT * FROM property_images WHERE workspace_id = ? AND property_id = ?
+          ORDER BY position ASC, created_at ASC`,
+      )
+      .all(workspaceId, propertyId),
+  );
+}
+
+function publicPropertyImages(images: PropertyImageRow[]): PropertyImage[] {
+  return images.map((image) => ({
+    id: image.id,
+    mime: image.mime,
+    original_filename: image.original_filename,
+    position: image.position,
+    created_at: image.created_at,
+  }));
 }
 
 export function getProperty(
@@ -719,12 +789,15 @@ export interface PropertyInput {
   state: string;
   postalCode?: string | null;
   bedrooms: number;
+  bathrooms?: number;
+  listingType?: PropertyListingType;
   rentAmountCents: number;
   inquiryFeeCents?: number;
   status?: PropertyStatus;
 }
 
 const PROPERTY_CATEGORIES = ["Residential", "Office", "Retail", "Mixed"];
+const PROPERTY_LISTING_TYPES: PropertyListingType[] = ["entire", "part"];
 
 function propertyReference(db: DatabaseSync, workspaceId: string, name: string): string {
   const prefix = (name.replace(/[^a-z0-9]+/gi, "").slice(0, 3) || "PRP").toUpperCase();
@@ -761,6 +834,11 @@ export function createProperty(
   if (!city || !state) throw new ValidationError("Add the city and state.");
   const reference = (text(input.reference, 40) || propertyReference(db, input.workspaceId, name)).toUpperCase();
   const bedrooms = Math.max(0, Math.min(50, Math.round(input.bedrooms || 0)));
+  const bathrooms = Math.max(0, Math.min(50, Math.round(input.bathrooms ?? 1)));
+  const listingType = input.listingType ?? "entire";
+  if (!PROPERTY_LISTING_TYPES.includes(listingType)) {
+    throw new ValidationError("Choose whether the listing is the entire property or part of a building.");
+  }
   const rent = Math.max(0, Math.min(100_000_000, Math.round(input.rentAmountCents || 0)));
   const inquiryFee = Math.max(0, Math.min(100_000_000, Math.round(input.inquiryFeeCents || 0)));
   const status = input.status ?? "available";
@@ -778,9 +856,9 @@ export function createProperty(
     db.prepare(
       `INSERT INTO properties
         (id, workspace_id, landlord_id, created_by, reference, name, category, property_type, description,
-         unit_count, address_line1, city, state, postal_code, bedrooms, rent_amount_cents, inquiry_fee_cents,
-         status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         unit_count, address_line1, city, state, postal_code, bedrooms, bathrooms, listing_type,
+         rent_amount_cents, inquiry_fee_cents, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.workspaceId,
@@ -796,6 +874,8 @@ export function createProperty(
       state,
       isoOrNull(input.postalCode),
       bedrooms,
+      bathrooms,
+      listingType,
       rent,
       inquiryFee,
       status,
@@ -844,6 +924,14 @@ export function updateProperty(
     .get(input.workspaceId, reference, current.id);
   if (duplicate) throw new ConflictError("Another property already uses this reference.");
   const bedrooms = Math.max(0, Math.min(50, Math.round(input.bedrooms || 0)));
+  const bathrooms = Math.max(
+    0,
+    Math.min(50, Math.round(input.bathrooms === undefined ? current.bathrooms : input.bathrooms || 0)),
+  );
+  const listingType = input.listingType ?? current.listing_type;
+  if (!PROPERTY_LISTING_TYPES.includes(listingType)) {
+    throw new ValidationError("Choose whether the listing is the entire property or part of a building.");
+  }
   const rent = Math.max(0, Math.min(100_000_000, Math.round(input.rentAmountCents || 0)));
   const inquiryFee = Math.max(
     0,
@@ -861,7 +949,8 @@ export function updateProperty(
     db.prepare(
       `UPDATE properties SET landlord_id = ?, reference = ?, name = ?, category = ?, property_type = ?,
          description = ?, address_line1 = ?, city = ?, state = ?, postal_code = ?, bedrooms = ?,
-         rent_amount_cents = ?, inquiry_fee_cents = ?, status = ?, updated_at = ?
+         bathrooms = ?, listing_type = ?, rent_amount_cents = ?, inquiry_fee_cents = ?, status = ?,
+         updated_at = ?
        WHERE id = ? AND workspace_id = ?`,
     ).run(
       landlord.id,
@@ -875,6 +964,8 @@ export function updateProperty(
       state,
       isoOrNull(input.postalCode),
       bedrooms,
+      bathrooms,
+      listingType,
       rent,
       inquiryFee,
       status,
@@ -920,7 +1011,9 @@ export function deleteProperty(
        WHERE i.property_id = ?`,
     )
     .all(property.id) as Array<{ storage_key: string }>;
+  const propertyImages = listPropertyImages(db, input.workspaceId, property.id);
   transaction(db, () => {
+    db.prepare("DELETE FROM property_images WHERE property_id = ?").run(property.id);
     db.prepare("DELETE FROM properties WHERE id = ? AND workspace_id = ?").run(property.id, input.workspaceId);
     appendCaseEvent(db, {
       workspaceId: input.workspaceId,
@@ -934,10 +1027,11 @@ export function deleteProperty(
     });
   });
   for (const file of [...files, ...inquiryFiles]) deleteStoredObject(file.storage_key);
-  if (property.image_storage_key) deleteStoredObject(property.image_storage_key);
+  for (const image of propertyImages) deleteStoredObject(image.storage_key);
 }
 
 const MAX_PROPERTY_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PROPERTY_IMAGES = 12;
 
 function validatePropertyImage(file: { bytes: Buffer; mediaType: string }): void {
   if (file.bytes.length === 0) throw new ValidationError("The selected image is empty.");
@@ -967,67 +1061,140 @@ function validatePropertyImage(file: { bytes: Buffer; mediaType: string }): void
   }
 }
 
-export function setPropertyImage(
+export function addPropertyImages(
   db: DatabaseSync,
   input: {
     workspaceId: string;
     propertyId: string;
-    file: { bytes: Buffer; mediaType: string; filename: string };
+    files: Array<{ bytes: Buffer; mediaType: string; filename: string }>;
     actor: { id: string; label: string };
   },
-): PropertyRow {
+): PropertyImage[] {
   const property = getProperty(db, input.workspaceId, input.propertyId);
   if (!property) throw new NotFoundError("Property not found.");
-  validatePropertyImage(input.file);
-  const extension =
-    input.file.mediaType === "image/png" ? "png" : input.file.mediaType === "image/webp" ? "webp" : "jpg";
-  const saved = saveBuffer(input.workspaceId, input.file.bytes, extension);
-  const now = nowIso();
+  if (input.files.length === 0) throw new ValidationError("Choose at least one image.");
+  const existing = listPropertyImages(db, input.workspaceId, property.id);
+  if (existing.length + input.files.length > MAX_PROPERTY_IMAGES) {
+    throw new ValidationError(`A property can have up to ${MAX_PROPERTY_IMAGES} photos.`);
+  }
+  for (const file of input.files) validatePropertyImage(file);
+
+  const saved: Array<{ storageKey: string }> = [];
+  try {
+    for (const file of input.files) {
+      const extension =
+        file.mediaType === "image/png" ? "png" : file.mediaType === "image/webp" ? "webp" : "jpg";
+      saved.push(saveBuffer(input.workspaceId, file.bytes, extension));
+    }
+    const now = nowIso();
+    transaction(db, () => {
+      let position = existing.reduce((max, image) => Math.max(max, image.position), -1) + 1;
+      input.files.forEach((file, index) => {
+        db.prepare(
+          `INSERT INTO property_images
+            (id, workspace_id, property_id, storage_key, mime, original_filename, position, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          newId("pimg"),
+          input.workspaceId,
+          property.id,
+          saved[index].storageKey,
+          file.mediaType,
+          text(file.filename, 200) || null,
+          position + index,
+          now,
+        );
+      });
+      db.prepare("UPDATE properties SET updated_at = ? WHERE id = ? AND workspace_id = ?").run(
+        now,
+        property.id,
+        input.workspaceId,
+      );
+      appendCaseEvent(db, {
+        workspaceId: input.workspaceId,
+        entityKind: "property",
+        entityId: property.id,
+        eventType: "property.images_added",
+        actorKind: "sender",
+        actorId: input.actor.id,
+        actorLabel: input.actor.label,
+        metadata: { count: input.files.length },
+      });
+    });
+  } catch (error) {
+    for (const file of saved) deleteStoredObject(file.storageKey);
+    throw error;
+  }
+  return publicPropertyImages(listPropertyImages(db, input.workspaceId, property.id));
+}
+
+export function removePropertyImages(
+  db: DatabaseSync,
+  input: {
+    workspaceId: string;
+    propertyId: string;
+    imageId?: string | null;
+    actor: { id: string; label: string };
+  },
+): PropertyImage[] {
+  const property = getProperty(db, input.workspaceId, input.propertyId);
+  if (!property) throw new NotFoundError("Property not found.");
+  const images = listPropertyImages(db, input.workspaceId, property.id);
+  const targets = input.imageId ? images.filter((image) => image.id === input.imageId) : images;
+  if (input.imageId && targets.length === 0) throw new NotFoundError("Photo not found.");
+  if (targets.length === 0) return [];
+
   transaction(db, () => {
-    db.prepare(
-      "UPDATE properties SET image_storage_key = ?, image_mime = ?, updated_at = ? WHERE id = ? AND workspace_id = ?",
-    ).run(saved.storageKey, input.file.mediaType, now, property.id, input.workspaceId);
+    if (input.imageId) {
+      db.prepare(
+        "DELETE FROM property_images WHERE id = ? AND property_id = ? AND workspace_id = ?",
+      ).run(input.imageId, property.id, input.workspaceId);
+    } else {
+      db.prepare("DELETE FROM property_images WHERE property_id = ? AND workspace_id = ?").run(
+        property.id,
+        input.workspaceId,
+      );
+    }
+    db.prepare("UPDATE properties SET updated_at = ? WHERE id = ? AND workspace_id = ?").run(
+      nowIso(),
+      property.id,
+      input.workspaceId,
+    );
     appendCaseEvent(db, {
       workspaceId: input.workspaceId,
       entityKind: "property",
       entityId: property.id,
-      eventType: "property.image_updated",
+      eventType: "property.images_removed",
       actorKind: "sender",
       actorId: input.actor.id,
       actorLabel: input.actor.label,
-      metadata: { filename: input.file.filename, bytes: saved.bytes },
+      metadata: { count: targets.length },
     });
   });
-  if (property.image_storage_key) deleteStoredObject(property.image_storage_key);
-  return getProperty(db, input.workspaceId, property.id) as PropertyRow;
+  for (const image of targets) deleteStoredObject(image.storage_key);
+  return publicPropertyImages(listPropertyImages(db, input.workspaceId, property.id));
 }
 
-export function removePropertyImage(
+export function readPropertyImage(
   db: DatabaseSync,
-  input: { workspaceId: string; propertyId: string; actor: { id: string; label: string } },
-): PropertyRow {
-  const property = getProperty(db, input.workspaceId, input.propertyId);
-  if (!property) throw new NotFoundError("Property not found.");
-  db.prepare(
-    "UPDATE properties SET image_storage_key = NULL, image_mime = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?",
-  ).run(nowIso(), property.id, input.workspaceId);
-  if (property.image_storage_key) deleteStoredObject(property.image_storage_key);
-  appendCaseEvent(db, {
-    workspaceId: input.workspaceId,
-    entityKind: "property",
-    entityId: property.id,
-    eventType: "property.image_removed",
-    actorKind: "sender",
-    actorId: input.actor.id,
-    actorLabel: input.actor.label,
-    metadata: {},
-  });
-  return getProperty(db, input.workspaceId, property.id) as PropertyRow;
-}
-
-export function readPropertyImage(property: PropertyRow): { bytes: Buffer; mime: string } | null {
-  if (!property.image_storage_key || !property.image_mime) return null;
-  return { bytes: readStoredObject(property.image_storage_key), mime: property.image_mime };
+  workspaceId: string,
+  propertyId: string,
+  imageId?: string | null,
+): { bytes: Buffer; mime: string } | null {
+  const image = imageId
+    ? (db
+        .prepare(
+          "SELECT * FROM property_images WHERE id = ? AND property_id = ? AND workspace_id = ?",
+        )
+        .get(imageId, propertyId, workspaceId) as unknown as PropertyImageRow | undefined)
+    : (db
+        .prepare(
+          `SELECT * FROM property_images WHERE property_id = ? AND workspace_id = ?
+            ORDER BY position ASC, created_at ASC LIMIT 1`,
+        )
+        .get(propertyId, workspaceId) as unknown as PropertyImageRow | undefined);
+  if (!image) return null;
+  return { bytes: readStoredObject(image.storage_key), mime: image.mime };
 }
 
 export function listUnits(
@@ -2449,6 +2616,8 @@ export async function createAgreementFromPrecedent(
       .filter(Boolean)
       .join(", "),
     rentLabel: `${formatMoney(rent)} per month`,
+    monthlyRent: formatMoney(rent),
+    annualRent: formatMoney(rent * 12),
     startDate: formatLongDate(start),
     endDate: formatLongDate(end),
     jurisdiction,
@@ -2993,6 +3162,9 @@ export function getInquirySummaryPdf(
     propertyType:
       [input.property.category, input.property.property_type].filter(Boolean).join(" · ") ||
       null,
+    propertyListingType: input.property.listing_type,
+    propertyBedrooms: input.property.bedrooms,
+    propertyBathrooms: input.property.bathrooms,
     monthlyRent: `${formatMoney(input.property.rent_amount_cents)} per month`,
     passportPhoto: passportFile
       ? { bytes: readInquiryFile(passportFile), mediaType: passportFile.mime }

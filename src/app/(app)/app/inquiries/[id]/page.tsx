@@ -68,6 +68,9 @@ export default async function InquiryDetailPage({ params }: { params: Promise<{ 
             name: detail.property.name,
             reference: detail.property.reference,
             address: propertyAddress,
+            bedrooms: detail.property.bedrooms,
+            bathrooms: detail.property.bathrooms,
+            listingType: detail.property.listing_type,
             rentAmountCents: detail.property.rent_amount_cents,
             defaultInquiryFeeCents: detail.property.inquiry_fee_cents,
           }}

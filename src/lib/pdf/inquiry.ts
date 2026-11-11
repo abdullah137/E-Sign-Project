@@ -46,6 +46,9 @@ export interface InquirySummaryInput {
   notes?: string | null;
   landlordPhone?: string | null;
   propertyType?: string | null;
+  propertyListingType?: string | null;
+  propertyBedrooms?: number | null;
+  propertyBathrooms?: number | null;
   monthlyRent?: string | null;
   passportPhoto?: { bytes: Uint8Array; mediaType: string } | null;
   passportFileName?: string | null;
@@ -135,31 +138,7 @@ export async function buildInquirySummaryPdf(input: InquirySummaryInput): Promis
   } else {
     page.drawText("JURIPASS", { x: MARGIN, y: y - 10, size: 12, font: bold, color: INK });
   }
-  const photoWidth = 72;
-  const photoHeight = 92;
-  const photoX = WIDTH - MARGIN - photoWidth;
-  const photoY = HEIGHT - MARGIN - photoHeight;
-  if (passport) {
-    page.drawRectangle({
-      x: photoX - 1,
-      y: photoY - 1,
-      width: photoWidth + 2,
-      height: photoHeight + 2,
-      color: rgb(1, 1, 1),
-      borderColor: LINE,
-      borderWidth: 1,
-    });
-    const scale = Math.min(photoWidth / passport.width, photoHeight / passport.height);
-    const drawWidth = passport.width * scale;
-    const drawHeight = passport.height * scale;
-    page.drawImage(passport, {
-      x: photoX + (photoWidth - drawWidth) / 2,
-      y: photoY + (photoHeight - drawHeight) / 2,
-      width: drawWidth,
-      height: drawHeight,
-    });
-  }
-  const headerRight = passport ? photoX - 12 : WIDTH - MARGIN;
+  const headerRight = WIDTH - MARGIN;
   const brandWidth = bold.widthOfTextAtSize(clean(input.workspaceName), 9);
   page.drawText(clean(input.workspaceName), { x: headerRight - brandWidth, y: y - 10, size: 9, font: bold, color: MUTED });
   y -= 46;
@@ -211,18 +190,17 @@ export async function buildInquirySummaryPdf(input: InquirySummaryInput): Promis
   row("Additional information", input.additionalInfo || input.notes || "None");
   row("Typed signature", input.signatureName || "Not signed");
   row("Declaration", input.declarationAccepted === false ? "Not accepted" : "Accepted");
-  row(
-    "Passport photo",
-    input.passportPhoto
-      ? `Attached${input.passportFileName ? ` · ${input.passportFileName}` : ""}`
-      : "Not provided",
-  );
 
   y -= 12;
   section("Property and landlord");
   row("Property", `${input.propertyName} · ${input.propertyAddress}`);
   row("Unit", input.unitLabel || "Whole property");
   row("Property type", input.propertyType || "Not provided");
+  row("Listing type", input.propertyListingType === "part" ? "Part of building" : "Entire property");
+  row(
+    "Bedrooms / bathrooms",
+    `${input.propertyBedrooms ?? "Not provided"} / ${input.propertyBathrooms ?? "Not provided"}`,
+  );
   row("Monthly rent", input.monthlyRent || "Not provided");
   row("Landlord", `${input.landlordName} · ${input.landlordEmail}`);
   row("Landlord phone", input.landlordPhone || "Not provided");
@@ -251,6 +229,40 @@ export async function buildInquirySummaryPdf(input: InquirySummaryInput): Promis
     8.5,
     MUTED,
   );
+
+  if (passport) {
+    y -= 12;
+    section("Passport photo");
+    const frameWidth = 108;
+    const frameHeight = 138;
+    ensure(frameHeight + 34);
+    page.drawRectangle({
+      x: MARGIN,
+      y: y - frameHeight,
+      width: frameWidth,
+      height: frameHeight,
+      color: rgb(1, 1, 1),
+      borderColor: LINE,
+      borderWidth: 1,
+    });
+    const scale = Math.min(frameWidth / passport.width, frameHeight / passport.height);
+    const drawWidth = passport.width * scale;
+    const drawHeight = passport.height * scale;
+    page.drawImage(passport, {
+      x: MARGIN + (frameWidth - drawWidth) / 2,
+      y: y - frameHeight + (frameHeight - drawHeight) / 2,
+      width: drawWidth,
+      height: drawHeight,
+    });
+    y -= frameHeight + 10;
+    paragraph(
+      input.passportFileName
+        ? `Supplied by the applicant · ${input.passportFileName}`
+        : "Supplied by the applicant.",
+      8,
+      MUTED,
+    );
+  }
 
   for (let index = 0; index < pages.length; index += 1) {
     pages[index].drawText(`Page ${index + 1} of ${pages.length}`, {

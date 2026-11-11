@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, ClipboardList, Layers, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
@@ -15,6 +15,8 @@ import { formatBytes } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import type {
   LandlordRow,
+  PropertyImage,
+  PropertyListingType,
   PropertyListRow,
   PropertyStatus,
   PropertyUnitListRow,
@@ -37,12 +39,14 @@ const EMPTY_PROPERTY_FORM = {
   name: "",
   category: "Residential",
   propertyType: "Apartment",
+  listingType: "entire" as PropertyListingType,
   description: "",
   addressLine1: "",
   city: "",
   state: "",
   postalCode: "",
   bedrooms: "2",
+  bathrooms: "1",
   rent: "",
   inquiryFee: "",
   unitCount: "0",
@@ -86,6 +90,18 @@ const OCCUPANCY_TONE: Record<UnitOccupancy, "success" | "gold" | "danger"> = {
   maintenance: "danger",
 };
 
+const LISTING_TYPE_LABELS: Record<PropertyListingType, string> = {
+  entire: "Entire property",
+  part: "Part of building",
+};
+
+const MAX_PROPERTY_IMAGES = 12;
+const MAX_PROPERTY_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function propertyImageUrl(propertyId: string, image: PropertyImage, version: string): string {
+  return `/api/tenancy/properties/${propertyId}/image?imageId=${encodeURIComponent(image.id)}&v=${encodeURIComponent(version)}`;
+}
+
 export function PropertiesPanel({
   properties,
   landlords,
@@ -104,16 +120,25 @@ export function PropertiesPanel({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
   const [unitsFor, setUnitsFor] = useState<PropertyListRow | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<Array<{ file: File; url: string }>>([]);
+  const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
   const [removingImage, setRemovingImage] = useState(false);
+  const imageFilesRef = useRef(imageFiles);
+  imageFilesRef.current = imageFiles;
 
   useEffect(
     () => () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      for (const item of imageFilesRef.current) URL.revokeObjectURL(item.url);
     },
-    [imagePreview],
+    [],
   );
+
+  const clearImageFiles = () => {
+    setImageFiles((current) => {
+      for (const item of current) URL.revokeObjectURL(item.url);
+      return [];
+    });
+  };
 
   const unitsByProperty = useMemo(() => {
     const map = new Map<string, PropertyUnitListRow[]>();
@@ -132,8 +157,8 @@ export function PropertiesPanel({
   const startCreate = () => {
     setEditingProperty(null);
     setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
-    setImageFile(null);
-    setImagePreview(null);
+    clearImageFiles();
+    setRemovedImageIds([]);
     setError(null);
     setPropertyOpen(true);
   };
@@ -146,45 +171,99 @@ export function PropertiesPanel({
       name: property.name,
       category: property.category,
       propertyType: property.property_type,
+      listingType: property.listing_type,
       description: property.description ?? "",
       addressLine1: property.address_line1,
       city: property.city,
       state: property.state,
       postalCode: property.postal_code ?? "",
       bedrooms: String(property.bedrooms),
+      bathrooms: String(property.bathrooms),
       rent: (property.rent_amount_cents / 100).toString(),
       inquiryFee: property.inquiry_fee_cents > 0 ? (property.inquiry_fee_cents / 100).toString() : "",
       unitCount: "0",
       status: property.status,
     });
-    setImageFile(null);
-    setImagePreview(null);
+    clearImageFiles();
+    setRemovedImageIds([]);
     setError(null);
     setPropertyOpen(true);
   };
 
-  const pickImage = (file: File | null) => {
-    setImageFile(file);
-    setImagePreview(file ? URL.createObjectURL(file) : null);
+  const closePropertyModal = () => {
+    setPropertyOpen(false);
+    setEditingProperty(null);
+    clearImageFiles();
+    setRemovedImageIds([]);
+    setError(null);
   };
 
-  const uploadImage = async (propertyId: string) => {
-    if (!imageFile) return;
-    const body = new FormData();
-    body.set("image", imageFile);
-    await apiFetch(`/api/tenancy/properties/${propertyId}/image`, { method: "POST", body });
+  const pickImages = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setError(null);
+    const existingCount = (editingProperty?.images ?? []).filter(
+      (image) => !removedImageIds.includes(image.id),
+    ).length;
+    const room = MAX_PROPERTY_IMAGES - existingCount - imageFiles.length;
+    if (room <= 0) {
+      setError(`A property can have up to ${MAX_PROPERTY_IMAGES} photos.`);
+      return;
+    }
+    const accepted: Array<{ file: File; url: string }> = [];
+    for (const file of Array.from(files).slice(0, room)) {
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        setError("Upload PNG, JPEG or WebP images only.");
+        continue;
+      }
+      if (file.size > MAX_PROPERTY_IMAGE_BYTES) {
+        setError("Each image must be 5 MB or smaller.");
+        continue;
+      }
+      accepted.push({ file, url: URL.createObjectURL(file) });
+    }
+    if (accepted.length) setImageFiles((current) => [...current, ...accepted]);
   };
 
-  const removeImage = async (property: PropertyListRow) => {
-    if (!window.confirm(`Remove the image from ${property.name}?`)) return;
+  const removePendingImage = (index: number) => {
+    setImageFiles((current) => {
+      const target = current[index];
+      if (target) URL.revokeObjectURL(target.url);
+      return current.filter((_, itemIndex) => itemIndex !== index);
+    });
+  };
+
+  const toggleExistingImage = (imageId: string) => {
+    setRemovedImageIds((current) =>
+      current.includes(imageId)
+        ? current.filter((id) => id !== imageId)
+        : [...current, imageId],
+    );
+  };
+
+  const syncImages = async (propertyId: string) => {
+    for (const imageId of removedImageIds) {
+      await apiFetch(
+        `/api/tenancy/properties/${propertyId}/image?imageId=${encodeURIComponent(imageId)}`,
+        { method: "DELETE" },
+      );
+    }
+    if (imageFiles.length > 0) {
+      const body = new FormData();
+      for (const item of imageFiles) body.append("images", item.file);
+      await apiFetch(`/api/tenancy/properties/${propertyId}/image`, { method: "POST", body });
+    }
+  };
+
+  const removeImages = async (property: PropertyListRow) => {
+    if (!window.confirm(`Remove all photos from ${property.name}?`)) return;
     setRemovingImage(true);
     try {
       await apiFetch(`/api/tenancy/properties/${property.id}/image`, { method: "DELETE" });
-      toast({ title: "Image removed", description: `${property.name} no longer has a photo.` });
+      toast({ title: "Photos removed", description: `${property.name} no longer has photos.` });
       router.refresh();
     } catch (err) {
       toast({
-        title: "Image not removed",
+        title: "Photos not removed",
         description: err instanceof ApiClientError ? err.message : "Please try again.",
       });
     } finally {
@@ -204,12 +283,14 @@ export function PropertiesPanel({
       name: form.name,
       category: form.category,
       propertyType: form.propertyType,
+      listingType: form.listingType,
       description: form.description || null,
       addressLine1: form.addressLine1,
       city: form.city,
       state: form.state,
       postalCode: form.postalCode || null,
       bedrooms: Number(form.bedrooms || 0),
+      bathrooms: Number(form.bathrooms || 0),
       rentAmountCents: Number.isFinite(rentAmount) ? Math.round(rentAmount * 100) : 0,
       inquiryFeeCents:
         Number.isFinite(inquiryFee) && inquiryFee > 0 ? Math.round(inquiryFee * 100) : 0,
@@ -221,19 +302,39 @@ export function PropertiesPanel({
           method: "PATCH",
           body: JSON.stringify(payload),
         });
-        await uploadImage(editingProperty.id);
+        try {
+          await syncImages(editingProperty.id);
+        } catch (imageError) {
+          toast({
+            title: "Photos not saved",
+            description:
+              imageError instanceof ApiClientError
+                ? `The property was saved. ${imageError.message}`
+                : "The property was saved, but the photos could not be updated.",
+          });
+        }
         toast({ title: "Property updated", description: `${form.name} has been saved.` });
         setPropertyOpen(false);
         setEditingProperty(null);
-        setImageFile(null);
-        setImagePreview(null);
+        clearImageFiles();
+        setRemovedImageIds([]);
         router.refresh();
       } else {
         const result = await apiFetch<{ property: { id: string; name: string } }>("/api/tenancy/properties", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        await uploadImage(result.property.id);
+        try {
+          await syncImages(result.property.id);
+        } catch (imageError) {
+          toast({
+            title: "Photos not saved",
+            description:
+              imageError instanceof ApiClientError
+                ? `The property was added. ${imageError.message}`
+                : "The property was added, but the photos could not be uploaded.",
+          });
+        }
         const count = Math.max(0, Math.min(100, Math.round(Number(form.unitCount || 0))));
         if (count > 0) {
           await apiFetch("/api/tenancy/units", {
@@ -260,8 +361,8 @@ export function PropertiesPanel({
         });
         setPropertyOpen(false);
         setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
-        setImageFile(null);
-        setImagePreview(null);
+        clearImageFiles();
+        setRemovedImageIds([]);
         router.refresh();
       }
     } catch (err) {
@@ -289,6 +390,10 @@ export function PropertiesPanel({
       setDeleting(null);
     }
   };
+
+  const visibleImages = (editingProperty?.images ?? []).filter(
+    (image) => !removedImageIds.includes(image.id),
+  );
 
   return (
     <div className="space-y-6">
@@ -332,13 +437,28 @@ export function PropertiesPanel({
             const propertyUnits = unitsByProperty.get(property.id) ?? [];
             return (
               <article key={property.id} className="flex flex-col rounded-card border border-hairline bg-card p-5">
-                {property.image_storage_key ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/tenancy/properties/${property.id}/image?v=${encodeURIComponent(property.updated_at)}`}
-                    alt={`${property.name} property`}
-                    className="mb-4 h-40 w-full rounded-lg border border-hairline object-cover"
-                  />
+                {property.images.length > 0 ? (
+                  <div className="mb-4 space-y-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={propertyImageUrl(property.id, property.images[0], property.updated_at)}
+                      alt={`${property.name} property`}
+                      className="h-40 w-full rounded-lg border border-hairline object-cover"
+                    />
+                    {property.images.length > 1 ? (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {property.images.slice(1).map((image) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={image.id}
+                            src={propertyImageUrl(property.id, image, property.updated_at)}
+                            alt={`${property.name} photo`}
+                            className="h-14 w-20 shrink-0 rounded-md border border-hairline object-cover"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -358,6 +478,7 @@ export function PropertiesPanel({
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Badge tone="neutral">{property.category}</Badge>
                   <Badge tone="muted">{property.property_type}</Badge>
+                  <Badge tone="muted">{LISTING_TYPE_LABELS[property.listing_type]}</Badge>
                   {property.description ? (
                     <span className="text-[11.5px] text-slate">{property.description}</span>
                   ) : null}
@@ -374,6 +495,14 @@ export function PropertiesPanel({
                   <div>
                     <dt className="text-slate">Units</dt>
                     <dd className="mt-0.5 font-semibold text-ink">{propertyUnits.length || property.unit_count}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate">Bedrooms</dt>
+                    <dd className="mt-0.5 font-semibold text-ink">{property.bedrooms}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate">Bathrooms</dt>
+                    <dd className="mt-0.5 font-semibold text-ink">{property.bathrooms}</dd>
                   </div>
                   <div>
                     <dt className="text-slate">Landlord</dt>
@@ -404,16 +533,16 @@ export function PropertiesPanel({
                     <Pencil className="h-4 w-4" aria-hidden="true" />
                     Edit
                   </Button>
-                  {property.image_storage_key ? (
+                  {property.images.length > 0 ? (
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       loading={removingImage}
-                      onClick={() => removeImage(property)}
+                      onClick={() => removeImages(property)}
                     >
                       <X className="h-4 w-4" aria-hidden="true" />
-                      Remove photo
+                      Remove photos
                     </Button>
                   ) : null}
                   <Button
@@ -435,13 +564,13 @@ export function PropertiesPanel({
 
       <Modal
         open={propertyOpen}
-        onClose={() => setPropertyOpen(false)}
+        onClose={closePropertyModal}
         title={editingProperty ? "Edit property" : "Add property"}
         description="A unique reference is generated automatically. The rent and address are prefilled into agreements prepared from this property."
         size="lg"
         footer={
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setPropertyOpen(false)}>
+            <Button type="button" variant="secondary" onClick={closePropertyModal}>
               Cancel
             </Button>
             <Button type="submit" form="property-form" loading={saving}>
@@ -493,8 +622,29 @@ export function PropertiesPanel({
             </Select>
           </FormField>
           <FormField
+            label="Listing type"
+            htmlFor="property-listing-type"
+            required
+            hint="Choose whether the whole property or only part of the building is being let."
+          >
+            <Select
+              id="property-listing-type"
+              value={form.listingType}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  listingType: event.target.value as PropertyListingType,
+                }))
+              }
+            >
+              <option value="entire">Entire property</option>
+              <option value="part">Part of building</option>
+            </Select>
+          </FormField>
+          <FormField
             label="Inquiry fee"
             htmlFor="property-fee"
+            className="sm:col-span-2"
             hint="Optional. Applicants pay this fee on Paystack before the inquiry can be reviewed."
           >
             <Input
@@ -529,7 +679,16 @@ export function PropertiesPanel({
           <FormField label="Bedrooms" htmlFor="property-bedrooms">
             <Input id="property-bedrooms" type="number" min={0} max={50} value={form.bedrooms} onChange={update("bedrooms")} />
           </FormField>
-          <FormField label="Monthly rent" htmlFor="property-rent" required hint="Enter the amount in your local currency.">
+          <FormField label="Bathrooms" htmlFor="property-bathrooms">
+            <Input id="property-bathrooms" type="number" min={0} max={50} value={form.bathrooms} onChange={update("bathrooms")} />
+          </FormField>
+          <FormField
+            label="Monthly rent"
+            htmlFor="property-rent"
+            required
+            className="sm:col-span-2"
+            hint="Enter the amount in your local currency."
+          >
             <Input
               id="property-rent"
               type="number"
@@ -566,64 +725,83 @@ export function PropertiesPanel({
             />
           </FormField>
           <FormField
-            label="Property image"
+            label="Property photos"
             htmlFor="property-image"
             className="sm:col-span-2"
+            hint={`Optional. Add up to ${MAX_PROPERTY_IMAGES} photos.`}
           >
             <div className="rounded-xl border border-dashed border-hairline-strong bg-surface-subtle p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                {imagePreview || (editingProperty?.image_storage_key && !imageFile) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={
-                      imagePreview ??
-                      `/api/tenancy/properties/${editingProperty?.id}/image?v=${encodeURIComponent(editingProperty?.updated_at ?? "")}`
-                    }
-                    alt="Property preview"
-                    className="h-28 w-full rounded-lg border border-hairline object-cover sm:w-44"
-                  />
-                ) : (
-                  <div className="flex h-28 w-full items-center justify-center rounded-lg border border-dashed border-hairline-strong text-[12px] text-slate sm:w-44">
-                    No image selected
-                  </div>
-                )}
-                <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium text-ink">
-                      {imageFile
-                        ? imageFile.name
-                        : editingProperty?.image_storage_key
-                          ? "Current property image"
-                          : "PNG, JPEG or WebP up to 5 MB."}
-                    </p>
-                    <p className="text-[11.5px] text-slate">
-                      {imageFile
-                        ? formatBytes(imageFile.size)
-                        : "Stored privately for this workspace and shown on the property card."}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-hairline bg-card px-3 py-1.5 text-[12px] font-medium text-ink hover:border-brand-500">
-                      <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-                      {imageFile ? "Change image" : "Browse"}
-                      <input
-                        id="property-image"
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="sr-only"
-                        onChange={(event) => {
-                          pickImage(event.target.files?.[0] ?? null);
-                          event.target.value = "";
-                        }}
+              {visibleImages.length > 0 || imageFiles.length > 0 ? (
+                <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {visibleImages.map((image) => (
+                    <div key={image.id} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={propertyImageUrl(editingProperty!.id, image, editingProperty!.updated_at)}
+                        alt={image.original_filename ?? "Property photo"}
+                        className="h-24 w-full rounded-lg border border-hairline object-cover"
                       />
-                    </label>
-                    {imageFile ? (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => pickImage(null)}>
-                        Remove
-                      </Button>
-                    ) : null}
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleExistingImage(image.id)}
+                        aria-label="Remove photo"
+                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-white hover:bg-ink"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                  {imageFiles.map((item, index) => (
+                    <div key={item.url} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.url}
+                        alt={item.file.name}
+                        className="h-24 w-full rounded-lg border border-hairline object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePendingImage(index)}
+                        aria-label="Remove selected photo"
+                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-white hover:bg-ink"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <div className="mb-4 flex h-24 items-center justify-center rounded-lg border border-dashed border-hairline-strong text-[12px] text-slate">
+                  No photos selected
+                </div>
+              )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[12px] text-slate">
+                    PNG, JPEG or WebP up to 5 MB each. Stored privately for this workspace.
+                  </p>
+                  {removedImageIds.length > 0 ? (
+                    <p className="mt-1 text-[11.5px] text-danger">
+                      {removedImageIds.length} photo{removedImageIds.length === 1 ? "" : "s"} will be
+                      removed when you save.
+                    </p>
+                  ) : null}
+                </div>
+                <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-hairline bg-card px-3 py-1.5 text-[12px] font-medium text-ink hover:border-brand-500">
+                  <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                  {imageFiles.length > 0 || visibleImages.length > 0 ? "Add more photos" : "Browse photos"}
+                  <input
+                    id="property-image"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => {
+                      pickImages(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
               </div>
             </div>
           </FormField>

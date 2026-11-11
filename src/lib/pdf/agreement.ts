@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import type { Precedent } from "../precedents";
+import { RESIDENTIAL_TENANCY, type Precedent } from "../precedents";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -25,6 +25,8 @@ export interface AgreementPdfInput {
   propertyLabel: string;
   propertyAddress: string;
   rentLabel: string;
+  monthlyRent?: string;
+  annualRent?: string;
   startDate: string;
   endDate: string;
   jurisdiction: string;
@@ -52,6 +54,7 @@ export interface AgreementPdfResult {
 
 function sanitize(value: string): string {
   return value
+    .replace(/\u20A6/g, "NGN ")
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
@@ -78,6 +81,370 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 }
 
 export async function buildAgreementPdf(input: AgreementPdfInput): Promise<AgreementPdfResult> {
+  if (input.precedent.id === "residential-tenancy") {
+    return buildResidentialAgreementPdf(input);
+  }
+  return buildStandardAgreementPdf(input);
+}
+
+async function buildResidentialAgreementPdf(
+  input: AgreementPdfInput,
+): Promise<AgreementPdfResult> {
+  const doc = await PDFDocument.create();
+  doc.setTitle(RESIDENTIAL_TENANCY.documentTitle);
+  doc.setAuthor(input.workspaceName);
+  doc.setCreator("Juripass Sign Flow");
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const logo = input.logo
+    ? await (input.logo.mediaType === "image/png"
+        ? doc.embedPng(input.logo.bytes)
+        : doc.embedJpg(input.logo.bytes)
+      ).catch(() => null)
+    : null;
+
+  const pages: PDFPage[] = [];
+  let page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  pages.push(page);
+  let y = PAGE_HEIGHT - MARGIN;
+
+  const newPage = () => {
+    page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    pages.push(page);
+    y = PAGE_HEIGHT - MARGIN;
+  };
+
+  const ensure = (height: number) => {
+    if (y - height < MARGIN + 34) newPage();
+  };
+
+  const centered = (value: string, size: number, font: PDFFont, color = INK) => {
+    const clean = sanitize(value);
+    const width = font.widthOfTextAtSize(clean, size);
+    page.drawText(clean, { x: (PAGE_WIDTH - width) / 2, y, size, font, color });
+  };
+
+  const paragraph = (
+    value: string,
+    options: {
+      size?: number;
+      font?: PDFFont;
+      color?: typeof INK;
+      indent?: number;
+      leading?: number;
+    } = {},
+  ) => {
+    const size = options.size ?? 10.5;
+    const font = options.font ?? regular;
+    const indent = options.indent ?? 0;
+    const leading = options.leading ?? size * 1.55;
+    for (const line of wrap(value, font, size, CONTENT_WIDTH - indent)) {
+      ensure(leading);
+      page.drawText(line, { x: MARGIN + indent, y, size, font, color: options.color ?? SLATE });
+      y -= leading;
+    }
+  };
+
+  const heading = (value: string) => {
+    ensure(26);
+    paragraph(value, { font: bold, color: INK });
+    y -= 2;
+  };
+
+  const list = (items: string[], markers: string[]) => {
+    const indent = 30;
+    const leading = 16;
+    items.forEach((item, index) => {
+      const lines = wrap(item, regular, 10.5, CONTENT_WIDTH - indent);
+      if (y - (lines.length * leading + 6) < MARGIN + 34) newPage();
+      page.drawText(markers[index] ?? `${index + 1}.`, {
+        x: MARGIN,
+        y,
+        size: 10.5,
+        font: regular,
+        color: SLATE,
+      });
+      for (const line of lines) {
+        page.drawText(line, { x: MARGIN + indent, y, size: 10.5, font: regular, color: SLATE });
+        y -= leading;
+      }
+      y -= 5;
+    });
+  };
+
+  if (logo) {
+    const scale = Math.min(150 / logo.width, 36 / logo.height, 1);
+    const width = logo.width * scale;
+    const height = logo.height * scale;
+    page.drawImage(logo, { x: (PAGE_WIDTH - width) / 2, y: y - height, width, height });
+    y -= height + 14;
+  }
+  centered(input.landlordName.toUpperCase(), 12.5, bold, INK);
+  y -= 20;
+  centered(RESIDENTIAL_TENANCY.documentTitle, 12, bold, INK);
+  y -= 10;
+  page.drawLine({
+    start: { x: MARGIN, y },
+    end: { x: PAGE_WIDTH - MARGIN, y },
+    thickness: 0.7,
+    color: HAIRLINE,
+  });
+  y -= 24;
+
+  paragraph(
+    `THIS TENANCY AGREEMENT is made on ${input.startDate} BETWEEN ${input.landlordName} (hereinafter called "the Landlord") AND ${input.tenantName}, ${input.tenantEmail} (hereinafter called "the Tenant") of the other part.`,
+  );
+  y -= 10;
+
+  heading("WHEREAS:");
+  list(
+    [
+      `The Landlord is the owner of the property known as ${input.propertyLabel}, ${input.propertyAddress}.`,
+      `The Tenant has expressed his/her desire to take a flat in the said property and the Landlord has agreed to let the said property to the Tenant at the yearly rent of ${input.annualRent ?? input.rentLabel}, such rent being payable monthly at ${input.monthlyRent ?? input.rentLabel}. The first payment is payable on the execution of this agreement. The tenancy shall run from ${input.startDate} to ${input.endDate}.`,
+    ],
+    ["i.", "ii."],
+  );
+  y -= 4;
+
+  heading("NOW IT IS HEREBY AGREED THAT THE TENANT:");
+  list(
+    RESIDENTIAL_TENANCY.tenantObligations,
+    ["i.", "ii.", "iii.", "iv.", "v.", "vi.", "vii.", "viii."],
+  );
+  y -= 4;
+
+  heading("THE LANDLORD HEREBY UNDERTAKES TO BE RESPONSIBLE FOR:");
+  for (const item of RESIDENTIAL_TENANCY.landlordUndertakings) {
+    paragraph(item, { indent: 30 });
+    y -= 5;
+  }
+
+  if (input.guarantors.length) {
+    y -= 4;
+    ensure(95);
+    heading("GUARANTEE:");
+    paragraph(
+      `In consideration of the Landlord letting the property to the Tenant, ${input.guarantors
+        .map((guarantor) => guarantor.name)
+        .join(", ")} (the "Guarantor") guarantees the payment of rent and the performance by the Tenant of the obligations in this Agreement, subject to applicable law. The Guarantor confirms that they have read this Agreement and have had the opportunity to obtain independent legal advice.`,
+    );
+    y -= 4;
+  }
+
+  y -= 8;
+  ensure(300);
+  paragraph(RESIDENTIAL_TENANCY.witness);
+  y -= 20;
+
+  const placements: SignaturePlacement[] = [];
+
+  const detailLine = (
+    label: string,
+    value: string | undefined,
+    x: number,
+    lineY: number,
+    width: number,
+  ) => {
+    const text = sanitize(value ? `${label} ${value}` : label);
+    page.drawText(text, { x, y: lineY, size: 9, font: regular, color: SLATE });
+    const used = regular.widthOfTextAtSize(text, 9);
+    if (used + 16 < width) {
+      page.drawLine({
+        start: { x: x + used + 6, y: lineY + 2 },
+        end: { x: x + width, y: lineY + 2 },
+        thickness: 0.6,
+        color: HAIRLINE,
+      });
+    }
+  };
+
+  const signingLine = (
+    label: string,
+    recipientKey: string,
+    type: "signature" | "date",
+    x: number,
+    lineY: number,
+    width: number,
+  ) => {
+    page.drawText(label, { x, y: lineY, size: 9, font: regular, color: SLATE });
+    const labelWidth = regular.widthOfTextAtSize(label, 9);
+    const startX = x + labelWidth + 6;
+    const endX = x + width;
+    page.drawLine({
+      start: { x: startX, y: lineY + 2 },
+      end: { x: endX, y: lineY + 2 },
+      thickness: 0.6,
+      color: SLATE,
+    });
+    const fieldHeight = type === "signature" ? 24 : 18;
+    placements.push({
+      recipientKey,
+      pageIndex: pages.length - 1,
+      type,
+      x: (startX + 2) / PAGE_WIDTH,
+      y: (PAGE_HEIGHT - (lineY + fieldHeight + 4)) / PAGE_HEIGHT,
+      width: Math.max(20, endX - startX - 4) / PAGE_WIDTH,
+      height: fieldHeight / PAGE_HEIGHT,
+    });
+  };
+
+  const signerBlock = (options: {
+    key: string;
+    headingLines: string[];
+    name: string;
+    extra?: { label: string; value?: string };
+    witness: boolean;
+    x: number;
+    top: number;
+    width: number;
+  }): number => {
+    let cursor = options.top;
+    for (const line of options.headingLines) {
+      page.drawText(line, {
+        x: options.x,
+        y: cursor,
+        size: 8.5,
+        font: bold,
+        color: INK,
+      });
+      cursor -= 11;
+    }
+    cursor -= 22;
+    signingLine("Signature:", options.key, "signature", options.x, cursor, options.width);
+    cursor -= 34;
+    if (options.extra) {
+      detailLine(options.extra.label, options.extra.value, options.x, cursor, options.width);
+      cursor -= 26;
+    }
+    detailLine("Name:", options.name, options.x, cursor, options.width);
+    cursor -= 28;
+    signingLine("Date:", options.key, "date", options.x, cursor, options.width);
+    cursor -= 28;
+    if (options.witness) {
+      page.drawText("In the presence of", {
+        x: options.x,
+        y: cursor,
+        size: 9,
+        font: bold,
+        color: INK,
+      });
+      cursor -= 20;
+      for (const label of ["Name:", "Address:", "Occupation:"]) {
+        detailLine(label, undefined, options.x, cursor, options.width);
+        cursor -= 18;
+      }
+    }
+    return options.top - cursor;
+  };
+
+  const colWidth = (CONTENT_WIDTH - 28) / 2;
+  const leftX = MARGIN;
+  const rightX = MARGIN + colWidth + 28;
+
+  ensure(250);
+  const partiesTop = y;
+  const landlordHeight = signerBlock({
+    key: "landlord",
+    headingLines: ["SIGNED and sealed by the said", "LANDLORD"],
+    name: input.landlordName,
+    extra: { label: "Represented by:" },
+    witness: true,
+    x: leftX,
+    top: partiesTop,
+    width: colWidth,
+  });
+  const tenantHeight = signerBlock({
+    key: "tenant",
+    headingLines: ["SIGNED by the said", "TENANT"],
+    name: input.tenantName,
+    witness: true,
+    x: rightX,
+    top: partiesTop,
+    width: colWidth,
+  });
+  y = partiesTop - Math.max(landlordHeight, tenantHeight) - 16;
+
+  const secondarySigners = [
+    ...input.guarantors.map((guarantor, index) => ({
+      key: `guarantor-${index}`,
+      headingLines: [
+        "SIGNED by the said",
+        input.guarantors.length > 1 ? `GUARANTOR ${index + 1}` : "GUARANTOR",
+      ],
+      name: guarantor.name,
+      extra: undefined,
+    })),
+    ...(input.lawyer
+      ? [
+          {
+            key: "lawyer",
+            headingLines: ["SIGNED as witness by the said", "LAWYER / WITNESS"],
+            name: input.lawyer.name,
+            extra: {
+              label: "Law firm:",
+              value: input.lawyer.firmName || input.workspaceName,
+            },
+          },
+        ]
+      : []),
+  ];
+
+  for (let index = 0; index < secondarySigners.length; index += 2) {
+    ensure(180);
+    const rowTop = y;
+    let tallest = 0;
+    for (const [offset, signer] of secondarySigners.slice(index, index + 2).entries()) {
+      const height = signerBlock({
+        ...signer,
+        witness: false,
+        x: offset === 0 ? leftX : rightX,
+        top: rowTop,
+        width: colWidth,
+      });
+      tallest = Math.max(tallest, height);
+    }
+    y = rowTop - tallest - 16;
+  }
+
+  const recipientKeys = [
+    "tenant",
+    ...input.guarantors.map((_, index) => `guarantor-${index}`),
+    "landlord",
+    ...(input.lawyer ? ["lawyer"] : []),
+  ];
+
+  for (let index = 0; index < pages.length; index += 1) {
+    const current = pages[index];
+    current.drawText(`Page ${index + 1} of ${pages.length}`, {
+      x: PAGE_WIDTH - MARGIN - 52,
+      y: 26,
+      size: 7.5,
+      font: regular,
+      color: MUTED,
+    });
+    current.drawText("Prepared with Juripass · Sign Flow", {
+      x: MARGIN,
+      y: 26,
+      size: 7.5,
+      font: regular,
+      color: MUTED,
+    });
+    current.drawText(sanitize(input.preparedBy), {
+      x: MARGIN,
+      y: 16,
+      size: 7,
+      font: regular,
+      color: MUTED,
+    });
+  }
+
+  const bytes = await doc.save();
+  return { bytes, pageCount: doc.getPageCount(), placements, recipientKeys };
+}
+
+async function buildStandardAgreementPdf(
+  input: AgreementPdfInput,
+): Promise<AgreementPdfResult> {
   const doc = await PDFDocument.create();
   doc.setTitle(input.title);
   doc.setAuthor(input.workspaceName);

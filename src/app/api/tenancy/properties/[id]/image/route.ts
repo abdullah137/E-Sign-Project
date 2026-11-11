@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { apiError, apiOk, assertSameOrigin, handleRouteError } from "@/lib/api";
 import { requireApiContext } from "@/lib/api-auth";
 import { getDb } from "@/lib/db";
-import { getProperty, readPropertyImage, removePropertyImage, setPropertyImage } from "@/lib/tenancy";
+import {
+  addPropertyImages,
+  getProperty,
+  readPropertyImage,
+  removePropertyImages,
+} from "@/lib/tenancy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGES = 12;
 
 function detectMediaType(file: File): string {
   if (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/webp") {
@@ -20,13 +26,14 @@ function detectMediaType(file: File): string {
   return file.type || "application/octet-stream";
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const ctx = await requireApiContext();
     const property = getProperty(getDb(), ctx.workspace.id, id);
     if (!property) return apiError("Property not found.", 404, "not_found");
-    const image = readPropertyImage(property);
+    const imageId = new URL(request.url).searchParams.get("imageId");
+    const image = readPropertyImage(getDb(), ctx.workspace.id, property.id, imageId);
     if (!image) return apiError("This property has no image.", 404, "not_found");
     return new NextResponse(new Uint8Array(image.bytes), {
       headers: {
@@ -46,33 +53,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const ctx = await requireApiContext();
     const declaredLength = Number(request.headers.get("content-length") || 0);
-    if (declaredLength > MAX_IMAGE_BYTES + 256 * 1024) {
-      return apiError("The image must be 5 MB or smaller.", 413, "payload_too_large");
+    if (declaredLength > MAX_IMAGE_BYTES * MAX_IMAGES + 1024 * 1024) {
+      return apiError("Each image must be 5 MB or smaller.", 413, "payload_too_large");
     }
     let form: FormData;
     try {
       form = await request.formData();
     } catch {
-      return apiError("Send the image as a form upload.", 400, "invalid_body");
+      return apiError("Send the images as a form upload.", 400, "invalid_body");
     }
-    const upload = form.get("image");
-    if (!(upload instanceof File) || upload.size === 0) {
-      return apiError("Choose an image to upload.", 422, "validation_error");
+    const uploads = [...form.getAll("images"), ...form.getAll("image")].filter(
+      (entry): entry is File => entry instanceof File && entry.size > 0,
+    );
+    if (uploads.length === 0) {
+      return apiError("Choose at least one image to upload.", 422, "validation_error");
     }
-    if (upload.size > MAX_IMAGE_BYTES) {
-      return apiError("The image must be 5 MB or smaller.", 422, "validation_error");
+    if (uploads.length > MAX_IMAGES) {
+      return apiError(`Upload up to ${MAX_IMAGES} images at a time.`, 422, "validation_error");
     }
-    const property = setPropertyImage(getDb(), {
+    if (uploads.some((upload) => upload.size > MAX_IMAGE_BYTES)) {
+      return apiError("Each image must be 5 MB or smaller.", 422, "validation_error");
+    }
+    const images = addPropertyImages(getDb(), {
       workspaceId: ctx.workspace.id,
       propertyId: id,
-      file: {
-        bytes: Buffer.from(await upload.arrayBuffer()),
-        mediaType: detectMediaType(upload),
-        filename: upload.name || "property-image",
-      },
+      files: await Promise.all(
+        uploads.map(async (upload) => ({
+          bytes: Buffer.from(await upload.arrayBuffer()),
+          mediaType: detectMediaType(upload),
+          filename: upload.name || "property-image",
+        })),
+      ),
       actor: { id: ctx.user.id, label: ctx.user.full_name || ctx.user.email },
     });
-    return apiOk({ ok: true, property }, 201);
+    return apiOk({ ok: true, images }, 201);
   } catch (error) {
     return handleRouteError(error);
   }
@@ -83,12 +97,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     assertSameOrigin(request);
     const { id } = await params;
     const ctx = await requireApiContext();
-    const property = removePropertyImage(getDb(), {
+    const imageId = new URL(request.url).searchParams.get("imageId");
+    const images = removePropertyImages(getDb(), {
       workspaceId: ctx.workspace.id,
       propertyId: id,
+      imageId,
       actor: { id: ctx.user.id, label: ctx.user.full_name || ctx.user.email },
     });
-    return apiOk({ ok: true, property });
+    return apiOk({ ok: true, images });
   } catch (error) {
     return handleRouteError(error);
   }

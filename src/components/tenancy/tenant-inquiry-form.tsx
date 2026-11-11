@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox, FieldHint, FormField, Input, Select, Textarea } from "@/components/ui/input";
 import { apiFetch, ApiClientError } from "@/lib/client";
 import { formatMoney } from "@/lib/money";
-import type { PropertyUnitListRow } from "@/lib/tenancy";
 
 type GuarantorDraft = { name: string; email: string; relationship: string };
 
@@ -41,7 +40,6 @@ export function TenantInquiryForm({
   propertyReference,
   propertyAddress,
   rentLabel,
-  units,
   initialUnitId,
   applicantName,
   applicantEmail,
@@ -55,7 +53,6 @@ export function TenantInquiryForm({
   propertyReference: string;
   propertyAddress: string;
   rentLabel: string;
-  units: PropertyUnitListRow[];
   initialUnitId?: string | null;
   applicantName: string;
   applicantEmail: string;
@@ -114,8 +111,6 @@ export function TenantInquiryForm({
       ),
     );
   };
-
-  const selectedUnit = units.find((unit) => unit.id === form.unitId) ?? null;
 
   const pickPassport = (file: File | null) => {
     setPassportError(null);
@@ -264,27 +259,6 @@ export function TenantInquiryForm({
           </p>
         ) : null}
       </div>
-
-      <Section title="Property" description="Choose the unit you are applying for, if the property has units.">
-        <FormField label="Unit or flat" htmlFor="unitId" hint="Optional. Leave as the whole property if no unit is involved.">
-          <Select id="unitId" value={form.unitId} onChange={update("unitId")}>
-            <option value="">Whole property</option>
-            {units.map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                Unit {unit.unit_number} · {unit.unit_type}
-                {unit.occupancy_status === "occupied" ? " (occupied)" : ""}
-              </option>
-            ))}
-          </Select>
-        </FormField>
-        {selectedUnit ? (
-          <p className="rounded-lg border border-hairline bg-card px-4 py-3 text-[12.5px] leading-5 text-slate">
-            Unit {selectedUnit.unit_number} · {selectedUnit.unit_type} · {selectedUnit.bedrooms} bedroom
-            {selectedUnit.bedrooms === 1 ? "" : "s"}
-            {selectedUnit.description ? ` · ${selectedUnit.description}` : ""}
-          </p>
-        ) : null}
-      </Section>
 
       <Section title="Your details" description="Contact details used for this application.">
         <FormField label="Full name" htmlFor="applicantName" required>

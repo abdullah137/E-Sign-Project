@@ -13,7 +13,7 @@ import {
   FileText,
   PenLine,
 } from "lucide-react";
-import { requireWorkspace } from "@/lib/auth";
+import { requireWorkspace, isAdmin } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { expireStaleDocuments, getDashboardStats, listDocuments } from "@/lib/documents";
 import { getPlan } from "@/lib/plans";
@@ -26,6 +26,7 @@ import { MetricCard } from "@/components/documents/metric-card";
 import { DocumentTable } from "@/components/documents/document-table";
 import { LiveRefresh } from "@/components/app/live-refresh";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PayoutSetupModal } from "@/components/settings/payout-setup-modal";
 import { formatDate, greeting } from "@/lib/format";
 import { formatMoney } from "@/lib/tenancy";
 
@@ -47,9 +48,22 @@ export default async function DashboardPage() {
   const firstName = (ctx.user.full_name || ctx.user.email).split(/\s+/)[0];
   const monthlyLimit = plan.entitlements.documentsPerMonth;
   const reviewCount = tenancy.submitted + tenancy.awaitingLandlord;
+  const needsPayoutSetup =
+    isAdmin(ctx.membership.role) &&
+    (!ctx.workspace.bank_name || !ctx.workspace.bank_account_number);
 
   return (
     <div className="page-container py-8 sm:py-10">
+      {needsPayoutSetup ? (
+        <PayoutSetupModal
+          initial={{
+            bankName: ctx.workspace.bank_name ?? "",
+            accountName: ctx.workspace.bank_account_name ?? "",
+            accountNumber: ctx.workspace.bank_account_number ?? "",
+            accountType: ctx.workspace.bank_account_type ?? "Savings",
+          }}
+        />
+      ) : null}
       {stats.pending > 0 ? <LiveRefresh /> : null}
       <PageHeader
         overline="Overview"

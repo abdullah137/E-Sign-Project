@@ -10,11 +10,10 @@ import { ArrowRight, Upload } from "lucide-react";
 import { AuthCard, AuthMessage } from "./auth-card";
 import { PasswordInput } from "./password-input";
 import { Button } from "@/components/ui/button";
-import { Input, Label, FieldError, Checkbox, Select } from "@/components/ui/input";
+import { Input, Label, FieldError, Checkbox } from "@/components/ui/input";
 import { CountryDialSelect } from "@/components/ui/country-dial-select";
 import { apiFetch } from "@/lib/client";
 import { registerSchema } from "@/lib/validation";
-import { BANK_ACCOUNT_TYPES, NIGERIAN_BANKS } from "@/lib/banks";
 import { DEFAULT_COUNTRY_ISO, findCountryDialCode } from "@/lib/country-codes";
 
 type RegisterValues = z.infer<typeof registerSchema>;
@@ -35,7 +34,6 @@ export function RegisterForm({
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [hasLawFirm, setHasLawFirm] = useState(false);
-  const [hasBank, setHasBank] = useState(false);
   const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY_ISO);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -50,11 +48,6 @@ export function RegisterForm({
       lawFirmPhone: "",
       lawFirmAddress: "",
       lawFirmLogo: "",
-      bankName: "",
-      bankCode: "",
-      bankAccountName: "",
-      bankAccountNumber: "",
-      bankAccountType: "Savings",
       inviteToken,
     },
   });
@@ -70,18 +63,6 @@ export function RegisterForm({
       setLogoPreview(null);
       setLogoError(null);
       form.clearErrors(["workspaceName", "lawFirmEmail", "lawFirmPhone", "lawFirmAddress", "lawFirmLogo"]);
-    }
-  };
-
-  const toggleBank = (checked: boolean) => {
-    setHasBank(checked);
-    if (!checked) {
-      form.setValue("bankName", "");
-      form.setValue("bankCode", "");
-      form.setValue("bankAccountName", "");
-      form.setValue("bankAccountNumber", "");
-      form.setValue("bankAccountType", "Savings");
-      form.clearErrors(["bankName", "bankAccountName", "bankAccountNumber", "bankAccountType"]);
     }
   };
 
@@ -120,9 +101,6 @@ export function RegisterForm({
         body: JSON.stringify({
           ...values,
           lawFirmPhone: phoneNumber ? `${dial} ${phoneNumber}` : "",
-          bankCode: hasBank
-            ? NIGERIAN_BANKS.find((bank) => bank.name === values.bankName)?.code ?? ""
-            : "",
         }),
       });
       router.push("/auth/verify-required");
@@ -223,36 +201,30 @@ export function RegisterForm({
                     later in settings.
                   </p>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="lawFirmEmail">Law firm email</Label>
+                <div>
+                  <Label htmlFor="lawFirmEmail">Law firm email</Label>
+                  <Input
+                    id="lawFirmEmail"
+                    type="email"
+                    placeholder="firm@company.com"
+                    aria-invalid={Boolean(form.formState.errors.lawFirmEmail) || undefined}
+                    {...form.register("lawFirmEmail")}
+                  />
+                  <FieldError>{form.formState.errors.lawFirmEmail?.message}</FieldError>
+                </div>
+                <div>
+                  <Label htmlFor="lawFirmPhone">Law firm phone</Label>
+                  <div className="grid grid-cols-[30%_minmax(0,1fr)] gap-2">
+                    <CountryDialSelect value={phoneCountry} onChange={setPhoneCountry} />
                     <Input
-                      id="lawFirmEmail"
-                      type="email"
-                      placeholder="firm@company.com"
-                      aria-invalid={Boolean(form.formState.errors.lawFirmEmail) || undefined}
-                      {...form.register("lawFirmEmail")}
+                      id="lawFirmPhone"
+                      inputMode="tel"
+                      placeholder="512 555 0100"
+                      aria-invalid={Boolean(form.formState.errors.lawFirmPhone) || undefined}
+                      {...form.register("lawFirmPhone")}
                     />
-                    <FieldError>{form.formState.errors.lawFirmEmail?.message}</FieldError>
                   </div>
-                  <div>
-                    <Label htmlFor="lawFirmPhone">Law firm phone</Label>
-                    <div className="flex gap-2">
-                      <CountryDialSelect
-                        value={phoneCountry}
-                        onChange={setPhoneCountry}
-                        className="w-[7.5rem] shrink-0"
-                      />
-                      <Input
-                        id="lawFirmPhone"
-                        inputMode="tel"
-                        placeholder="512 555 0100"
-                        aria-invalid={Boolean(form.formState.errors.lawFirmPhone) || undefined}
-                        {...form.register("lawFirmPhone")}
-                      />
-                    </div>
-                    <FieldError>{form.formState.errors.lawFirmPhone?.message}</FieldError>
-                  </div>
+                  <FieldError>{form.formState.errors.lawFirmPhone?.message}</FieldError>
                 </div>
                 <div>
                   <Label htmlFor="lawFirmAddress">Law firm address</Label>
@@ -318,85 +290,11 @@ export function RegisterForm({
                 </p>
               </>
             ) : null}
-            <div className="rounded border border-hairline bg-surface-subtle/40 px-4 py-2">
-              <Checkbox
-                id="hasBank"
-                checked={hasBank}
-                onChange={(event) => toggleBank(event.target.checked)}
-                label={
-                  <span>
-                    <span className="font-semibold text-ink">Add a payout bank account</span>
-                    <span className="block text-[12px] leading-5 text-slate">
-                      Used to settle inquiry fees collected through Juripass. You can add or change these
-                      details later in Settings → Profile.
-                    </span>
-                  </span>
-                }
-              />
-            </div>
-            {hasBank ? (
-              <>
-                <div>
-                  <Label htmlFor="bankName">Bank name</Label>
-                  <Select
-                    id="bankName"
-                    aria-invalid={Boolean(form.formState.errors.bankName) || undefined}
-                    {...form.register("bankName")}
-                  >
-                    <option value="">Select your bank</option>
-                    {NIGERIAN_BANKS.map((bank) => (
-                      <option key={bank.code} value={bank.name}>
-                        {bank.name}
-                      </option>
-                    ))}
-                  </Select>
-                  <FieldError>{form.formState.errors.bankName?.message}</FieldError>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="bankAccountType">Bank type</Label>
-                    <Select
-                      id="bankAccountType"
-                      aria-invalid={Boolean(form.formState.errors.bankAccountType) || undefined}
-                      {...form.register("bankAccountType")}
-                    >
-                      {BANK_ACCOUNT_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </Select>
-                    <FieldError>{form.formState.errors.bankAccountType?.message}</FieldError>
-                  </div>
-                  <div>
-                    <Label htmlFor="bankAccountNumber">Account number</Label>
-                    <Input
-                      id="bankAccountNumber"
-                      inputMode="numeric"
-                      maxLength={10}
-                      placeholder="0123456789"
-                      aria-invalid={Boolean(form.formState.errors.bankAccountNumber) || undefined}
-                      {...form.register("bankAccountNumber")}
-                    />
-                    <FieldError>{form.formState.errors.bankAccountNumber?.message}</FieldError>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="bankAccountName">Account name</Label>
-                  <Input
-                    id="bankAccountName"
-                    placeholder="As it appears on the bank statement"
-                    aria-invalid={Boolean(form.formState.errors.bankAccountName) || undefined}
-                    {...form.register("bankAccountName")}
-                  />
-                  <FieldError>{form.formState.errors.bankAccountName?.message}</FieldError>
-                </div>
-              </>
-            ) : null}
             <p className="rounded border border-hairline bg-surface-subtle/60 px-4 py-3 text-[12px] leading-5 text-slate">
               After verifying your email, finish your profile in Settings. Add your firm logo, display name
-              and accent colour under <span className="font-semibold text-ink">Branding</span>, and update the
-              payout account under <span className="font-semibold text-ink">Profile</span>.
+              and accent colour under <span className="font-semibold text-ink">Branding</span>. We will ask
+              for your payout bank account when you open the dashboard, and you can change it later under{" "}
+              <span className="font-semibold text-ink">Profile</span>.
             </p>
           </>
         ) : (
