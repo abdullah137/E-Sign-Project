@@ -14,11 +14,37 @@ const MARITAL_STATUSES = ["Single", "Married", "Divorced", "Widowed", "Separated
 const EMPLOYMENT_STATUSES = [
   "Employed full-time",
   "Employed part-time",
-  "Self-employed",
   "Contract or freelance",
+  "Self-employed",
   "Student",
   "Retired",
   "Unemployed",
+  "Other",
+];
+
+const EMPLOYED_STATUSES = ["Employed full-time", "Employed part-time"];
+const INDEPENDENT_STATUSES = ["Contract or freelance", "Self-employed"];
+
+const EMPLOYMENT_CATEGORIES = [
+  "IT and Software",
+  "Accounting and Finance",
+  "Banking and Insurance",
+  "Legal Services",
+  "Healthcare and Medical",
+  "Education and Training",
+  "Engineering and Construction",
+  "Real Estate and Property",
+  "Retail and Sales",
+  "Hospitality and Food Services",
+  "Transport and Logistics",
+  "Agriculture and Farming",
+  "Media and Marketing",
+  "Manufacturing",
+  "Oil, Gas and Energy",
+  "Telecommunications",
+  "Government and Public Sector",
+  "NGO and Non-profit",
+  "Creative Arts and Design",
   "Other",
 ];
 
@@ -70,14 +96,12 @@ export function TenantInquiryForm({
     currentState: "",
     stateOfOrigin: "",
     maritalStatus: "",
-    childrenCount: "0",
-    dependentsCount: "0",
     occupantsCount: "1",
-    bedroomsRequired: "1",
     employmentStatus: "",
     employer: "",
     occupation: "",
     employmentAddress: "",
+    employmentCategory: "",
     reasonForMoving: "",
     additionalInfo: "",
     signatureName: "",
@@ -141,6 +165,8 @@ export function TenantInquiryForm({
     }
     setSubmitting(true);
     try {
+      const employed = EMPLOYED_STATUSES.includes(form.employmentStatus);
+      const independent = INDEPENDENT_STATUSES.includes(form.employmentStatus);
       const result = await apiFetch<{
         inquiryId: string;
         payment: { authorizationUrl: string; reference: string; amountCents: number } | null;
@@ -153,14 +179,12 @@ export function TenantInquiryForm({
           currentState: form.currentState || null,
           stateOfOrigin: form.stateOfOrigin || null,
           maritalStatus: form.maritalStatus || null,
-          childrenCount: form.maritalStatus === "Single" ? 0 : Number(form.childrenCount || 0),
-          dependentsCount: Number(form.dependentsCount || 0),
           occupantsCount: Number(form.occupantsCount || 0),
-          bedroomsRequired: Number(form.bedroomsRequired || 0),
           employmentStatus: form.employmentStatus || null,
-          employer: form.employer || null,
-          occupation: form.occupation || null,
-          employmentAddress: form.employmentAddress || null,
+          employer: employed ? form.employer || null : null,
+          occupation: employed || independent ? form.occupation || null : null,
+          employmentAddress: employed ? form.employmentAddress || null : null,
+          employmentCategory: independent ? form.employmentCategory || null : null,
           reasonForMoving: form.reasonForMoving || null,
           additionalInfo: form.additionalInfo || null,
           declarationAccepted: true,
@@ -281,14 +305,7 @@ export function TenantInquiryForm({
             <Select
               id="maritalStatus"
               value={form.maritalStatus}
-              onChange={(event) => {
-                const maritalStatus = event.target.value;
-                setForm((current) => ({
-                  ...current,
-                  maritalStatus,
-                  childrenCount: maritalStatus === "Single" ? "0" : current.childrenCount,
-                }));
-              }}
+              onChange={update("maritalStatus")}
             >
               <option value="">Select…</option>
               {MARITAL_STATUSES.map((status) => (
@@ -363,50 +380,22 @@ export function TenantInquiryForm({
       </Section>
 
       <Section title="Household" description="Tell us who will live in the property.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {form.maritalStatus !== "Single" ? (
-            <FormField label="Children" htmlFor="childrenCount" hint="Enter 0 if none.">
-              <Input
-                id="childrenCount"
-                type="number"
-                min={0}
-                max={20}
-                value={form.childrenCount}
-                onChange={update("childrenCount")}
-              />
-            </FormField>
-          ) : null}
-          <FormField label="Dependents" htmlFor="dependentsCount" hint="Adults or children you support.">
-            <Input
-              id="dependentsCount"
-              type="number"
-              min={0}
-              max={30}
-              value={form.dependentsCount}
-              onChange={update("dependentsCount")}
-            />
-          </FormField>
-          <FormField label="People in the compound" htmlFor="occupantsCount" hint="Total occupants including you.">
-            <Input
-              id="occupantsCount"
-              type="number"
-              min={0}
-              max={30}
-              value={form.occupantsCount}
-              onChange={update("occupantsCount")}
-            />
-          </FormField>
-          <FormField label="Bedrooms required" htmlFor="bedroomsRequired">
-            <Input
-              id="bedroomsRequired"
-              type="number"
-              min={0}
-              max={20}
-              value={form.bedroomsRequired}
-              onChange={update("bedroomsRequired")}
-            />
-          </FormField>
-        </div>
+        <FormField
+          label="Number of occupants that would be staying including you"
+          htmlFor="occupantsCount"
+          hint="Enter 1 if you will live alone."
+        >
+          <Input
+            id="occupantsCount"
+            type="number"
+            min={1}
+            max={30}
+            step={1}
+            inputMode="numeric"
+            value={form.occupantsCount}
+            onChange={update("occupantsCount")}
+          />
+        </FormField>
       </Section>
 
       <Section title="Employment">
@@ -421,20 +410,49 @@ export function TenantInquiryForm({
               ))}
             </Select>
           </FormField>
-          <FormField label="Employer or business" htmlFor="employer">
-            <Input id="employer" value={form.employer} onChange={update("employer")} maxLength={160} />
-          </FormField>
-          <FormField label="Occupation or role" htmlFor="occupation">
-            <Input id="occupation" value={form.occupation} onChange={update("occupation")} maxLength={160} />
-          </FormField>
-          <FormField label="Employment address" htmlFor="employmentAddress">
-            <Input
-              id="employmentAddress"
-              value={form.employmentAddress}
-              onChange={update("employmentAddress")}
-              maxLength={240}
-            />
-          </FormField>
+          {EMPLOYED_STATUSES.includes(form.employmentStatus) ? (
+            <>
+              <FormField label="Employer or business" htmlFor="employer">
+                <Input id="employer" value={form.employer} onChange={update("employer")} maxLength={160} />
+              </FormField>
+              <FormField label="Occupation or role" htmlFor="occupation">
+                <Input id="occupation" value={form.occupation} onChange={update("occupation")} maxLength={160} />
+              </FormField>
+              <FormField label="Employment address" htmlFor="employmentAddress">
+                <Input
+                  id="employmentAddress"
+                  value={form.employmentAddress}
+                  onChange={update("employmentAddress")}
+                  maxLength={240}
+                />
+              </FormField>
+            </>
+          ) : null}
+          {INDEPENDENT_STATUSES.includes(form.employmentStatus) ? (
+            <>
+              <FormField
+                label="Category or industry"
+                htmlFor="employmentCategory"
+                hint="Choose the field you work in."
+              >
+                <Select
+                  id="employmentCategory"
+                  value={form.employmentCategory}
+                  onChange={update("employmentCategory")}
+                >
+                  <option value="">Select…</option>
+                  {EMPLOYMENT_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField label="Occupation or role" htmlFor="occupation">
+                <Input id="occupation" value={form.occupation} onChange={update("occupation")} maxLength={160} />
+              </FormField>
+            </>
+          ) : null}
         </div>
       </Section>
 

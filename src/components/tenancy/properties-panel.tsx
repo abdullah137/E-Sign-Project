@@ -57,9 +57,6 @@ function unitLabelFor(category: string, propertyType: string): { label: string; 
   if (category === "Retail" || propertyType === "Shop") {
     return { label: "Number of shoplets", noun: "shoplet" };
   }
-  if (category === "Residential") {
-    return { label: "Number of rooms", noun: "room" };
-  }
   return { label: "Number of units", noun: "unit" };
 }
 
@@ -72,6 +69,8 @@ const EMPTY_UNIT_FORM = {
   unitNumber: "",
   unitType: "Standard",
   bedrooms: "1",
+  bathrooms: "1",
+  toilets: "0",
   occupancyStatus: "available" as UnitOccupancy,
   rent: "",
   description: "",
@@ -120,6 +119,11 @@ export function PropertiesPanel({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
   const [unitsFor, setUnitsFor] = useState<PropertyListRow | null>(null);
+  const [unitWizard, setUnitWizard] = useState<{
+    propertyId: string;
+    propertyName: string;
+    count: number;
+  } | null>(null);
   const [imageFiles, setImageFiles] = useState<Array<{ file: File; url: string }>>([]);
   const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
   const [removingImage, setRemovingImage] = useState(false);
@@ -277,6 +281,17 @@ export function PropertiesPanel({
     setError(null);
     const rentAmount = Number(form.rent);
     const inquiryFee = Number(form.inquiryFee);
+    if (!Number.isInteger(rentAmount) || rentAmount < 0) {
+      setError("Enter the yearly rent as a whole number.");
+      setSaving(false);
+      return;
+    }
+    if (form.inquiryFee !== "" && (!Number.isInteger(inquiryFee) || inquiryFee < 0)) {
+      setError("Enter the inquiry fee as a whole number.");
+      setSaving(false);
+      return;
+    }
+    const unitTotal = Math.max(0, Math.min(100, Math.round(Number(form.unitCount || 0))));
     const payload = {
       landlordId: form.landlordId,
       reference: form.reference || null,
@@ -335,29 +350,20 @@ export function PropertiesPanel({
                 : "The property was added, but the photos could not be uploaded.",
           });
         }
-        const count = Math.max(0, Math.min(100, Math.round(Number(form.unitCount || 0))));
-        if (count > 0) {
-          await apiFetch("/api/tenancy/units", {
-            method: "POST",
-            body: JSON.stringify({
-              propertyId: result.property.id,
-              units: Array.from({ length: count }, (_, index) => ({
-                unitNumber: String(index + 1),
-                unitType: form.propertyType,
-                bedrooms: Number(form.bedrooms || 0),
-                occupancyStatus: "available",
-                rentAmountCents: payload.rentAmountCents,
-                description: null,
-              })),
-            }),
-          });
+        if (unitTotal > 0) {
+          const propertyId = result.property.id;
+          const propertyName = result.property.name;
+          setPropertyOpen(false);
+          setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
+          clearImageFiles();
+          setRemovedImageIds([]);
+          setUnitWizard({ propertyId, propertyName, count: unitTotal });
+          router.refresh();
+          return;
         }
         toast({
           title: "Property added",
-          description:
-            count > 0
-              ? `${form.name} and ${count} ${unitNoun(form.category, form.propertyType, count)} are ready.`
-              : `${form.name} is ready for tenant inquiries.`,
+          description: `${form.name} is ready for tenant inquiries.`,
         });
         setPropertyOpen(false);
         setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
@@ -489,7 +495,7 @@ export function PropertiesPanel({
                     <dt className="text-slate">Rent</dt>
                     <dd className="mt-0.5 font-semibold text-ink">
                       {formatMoney(property.rent_amount_cents)}
-                      <span className="font-normal text-slate"> / month</span>
+                      <span className="font-normal text-slate"> / year</span>
                     </dd>
                   </div>
                   <div>
@@ -645,13 +651,14 @@ export function PropertiesPanel({
             label="Inquiry fee"
             htmlFor="property-fee"
             className="sm:col-span-2"
-            hint="Optional. Applicants pay this fee on Paystack before the inquiry can be reviewed."
+            hint="Optional. Whole numbers only. Applicants pay this fee on Paystack before the inquiry can be reviewed."
           >
             <Input
               id="property-fee"
               type="number"
               min={0}
-              step="0.01"
+              step={1}
+              inputMode="numeric"
               value={form.inquiryFee}
               onChange={update("inquiryFee")}
             />
@@ -677,23 +684,42 @@ export function PropertiesPanel({
             </Select>
           </FormField>
           <FormField label="Bedrooms" htmlFor="property-bedrooms">
-            <Input id="property-bedrooms" type="number" min={0} max={50} value={form.bedrooms} onChange={update("bedrooms")} />
+            <Input
+              id="property-bedrooms"
+              type="number"
+              min={0}
+              max={50}
+              step={1}
+              inputMode="numeric"
+              value={form.bedrooms}
+              onChange={update("bedrooms")}
+            />
           </FormField>
           <FormField label="Bathrooms" htmlFor="property-bathrooms">
-            <Input id="property-bathrooms" type="number" min={0} max={50} value={form.bathrooms} onChange={update("bathrooms")} />
+            <Input
+              id="property-bathrooms"
+              type="number"
+              min={0}
+              max={50}
+              step={1}
+              inputMode="numeric"
+              value={form.bathrooms}
+              onChange={update("bathrooms")}
+            />
           </FormField>
           <FormField
-            label="Monthly rent"
+            label="Yearly rent"
             htmlFor="property-rent"
             required
             className="sm:col-span-2"
-            hint="Enter the amount in your local currency."
+            hint="Enter the amount in your local currency. Whole numbers only."
           >
             <Input
               id="property-rent"
               type="number"
               min={0}
-              step="0.01"
+              step={1}
+              inputMode="numeric"
               value={form.rent}
               onChange={update("rent")}
               required
@@ -703,7 +729,7 @@ export function PropertiesPanel({
             <FormField
               label={unitLabelFor(form.category, form.propertyType).label}
               htmlFor="property-units"
-              hint={`Creates numbered ${unitNoun(form.category, form.propertyType, 2)} automatically. Leave 0 for a single let property.`}
+              hint={`You will fill in each ${unitNoun(form.category, form.propertyType, 1)} one by one. Leave 0 for a single let property.`}
               className="sm:col-span-2"
             >
               <Input
@@ -711,6 +737,8 @@ export function PropertiesPanel({
                 type="number"
                 min={0}
                 max={100}
+                step={1}
+                inputMode="numeric"
                 value={form.unitCount}
                 onChange={update("unitCount")}
               />
@@ -819,6 +847,103 @@ export function PropertiesPanel({
         onClose={() => setUnitsFor(null)}
         onChanged={() => router.refresh()}
       />
+
+      <UnitSetupWizard
+        wizard={unitWizard}
+        onClose={() => {
+          setUnitWizard(null);
+          router.refresh();
+        }}
+        onFinished={() => {
+          setUnitWizard(null);
+          router.refresh();
+        }}
+      />
+    </div>
+  );
+}
+
+function UnitFields({
+  form,
+  update,
+  idPrefix,
+}: {
+  form: typeof EMPTY_UNIT_FORM;
+  update: (field: keyof typeof EMPTY_UNIT_FORM) => (
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => void;
+  idPrefix: string;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <FormField label="Unit name or number" htmlFor={`${idPrefix}-number`} required>
+        <Input id={`${idPrefix}-number`} value={form.unitNumber} onChange={update("unitNumber")} required />
+      </FormField>
+      <FormField label="Unit type" htmlFor={`${idPrefix}-type`} required>
+        <Input id={`${idPrefix}-type`} value={form.unitType} onChange={update("unitType")} required />
+      </FormField>
+      <FormField label="Bedrooms" htmlFor={`${idPrefix}-bedrooms`}>
+        <Input
+          id={`${idPrefix}-bedrooms`}
+          type="number"
+          min={0}
+          max={50}
+          step={1}
+          inputMode="numeric"
+          value={form.bedrooms}
+          onChange={update("bedrooms")}
+        />
+      </FormField>
+      <FormField label="Bathrooms" htmlFor={`${idPrefix}-bathrooms`}>
+        <Input
+          id={`${idPrefix}-bathrooms`}
+          type="number"
+          min={0}
+          max={50}
+          step={1}
+          inputMode="numeric"
+          value={form.bathrooms}
+          onChange={update("bathrooms")}
+        />
+      </FormField>
+      <FormField label="Toilets" htmlFor={`${idPrefix}-toilets`}>
+        <Input
+          id={`${idPrefix}-toilets`}
+          type="number"
+          min={0}
+          max={50}
+          step={1}
+          inputMode="numeric"
+          value={form.toilets}
+          onChange={update("toilets")}
+        />
+      </FormField>
+      <FormField label="Occupancy" htmlFor={`${idPrefix}-occupancy`}>
+        <Select id={`${idPrefix}-occupancy`} value={form.occupancyStatus} onChange={update("occupancyStatus")}>
+          <option value="available">Available</option>
+          <option value="occupied">Occupied</option>
+          <option value="maintenance">Maintenance</option>
+        </Select>
+      </FormField>
+      <FormField label="Yearly rent" htmlFor={`${idPrefix}-rent`}>
+        <Input
+          id={`${idPrefix}-rent`}
+          type="number"
+          min={0}
+          step={1}
+          inputMode="numeric"
+          value={form.rent}
+          onChange={update("rent")}
+        />
+      </FormField>
+      <FormField label="Description" htmlFor={`${idPrefix}-description`} className="sm:col-span-2">
+        <Textarea
+          id={`${idPrefix}-description`}
+          value={form.description}
+          onChange={update("description")}
+          maxLength={1000}
+        />
+      </FormField>
     </div>
   );
 }
@@ -839,7 +964,6 @@ function UnitsModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bulk, setBulk] = useState({ count: "10", unitType: "Standard", bedrooms: "1", rent: "" });
 
   const update = (field: keyof typeof form) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -857,38 +981,54 @@ function UnitsModal({
       unitNumber: unit.unit_number,
       unitType: unit.unit_type,
       bedrooms: String(unit.bedrooms),
+      bathrooms: String(unit.bathrooms ?? 1),
+      toilets: String(unit.toilets ?? 0),
       occupancyStatus: unit.occupancy_status,
       rent: (unit.rent_amount_cents / 100).toString(),
       description: unit.description ?? "",
     });
+    setError(null);
   };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!property) return;
+    const rent = Number(form.rent);
+    if (!form.unitNumber.trim()) {
+      setError("Enter a unit name or number.");
+      return;
+    }
+    if (!Number.isInteger(rent) || rent < 0) {
+      setError("Enter the yearly rent as a whole number.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = {
       unitNumber: form.unitNumber,
       unitType: form.unitType,
-      bedrooms: Number(form.bedrooms || 0),
+      bedrooms: Math.round(Number(form.bedrooms || 0)),
+      bathrooms: Math.round(Number(form.bathrooms || 0)),
+      toilets: Math.round(Number(form.toilets || 0)),
       occupancyStatus: form.occupancyStatus,
-      rentAmountCents: Math.round(Number(form.rent || 0) * 100),
+      rentAmountCents: rent * 100,
       description: form.description || null,
     };
     try {
       if (editingId) {
         await apiFetch(`/api/tenancy/units/${editingId}`, { method: "PATCH", body: JSON.stringify(payload) });
         toast({ title: "Unit updated", description: `Unit ${form.unitNumber} has been saved.` });
+        resetForm();
+        onChanged();
       } else {
-        await apiFetch("/api/tenancy/units", {
+        await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
           method: "POST",
           body: JSON.stringify({ propertyId: property.id, ...payload }),
         });
         toast({ title: "Unit added", description: `Unit ${form.unitNumber} is ready.` });
+        resetForm();
+        onChanged();
       }
-      resetForm();
-      onChanged();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "The unit could not be saved.");
     } finally {
@@ -910,46 +1050,12 @@ function UnitsModal({
     }
   };
 
-  const generate = async () => {
-    if (!property) return;
-    const count = Math.max(1, Math.min(100, Math.round(Number(bulk.count || 0))));
-    const existing = new Set(units.map((unit) => unit.unit_number));
-    const newUnits = Array.from({ length: count }, (_, index) => String(index + 1))
-      .filter((number) => !existing.has(number))
-      .map((number) => ({
-        unitNumber: number,
-        unitType: bulk.unitType || "Standard",
-        bedrooms: Number(bulk.bedrooms || 0),
-        occupancyStatus: "available",
-        rentAmountCents: Math.round(Number(bulk.rent || 0) * 100),
-        description: null,
-      }));
-    if (newUnits.length === 0) {
-      toast({ title: "Nothing to add", description: "Those unit numbers already exist." });
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await apiFetch("/api/tenancy/units", {
-        method: "POST",
-        body: JSON.stringify({ propertyId: property.id, units: newUnits }),
-      });
-      toast({ title: "Units generated", description: `${newUnits.length} unit(s) added.` });
-      onChanged();
-    } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "The units could not be generated.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <Modal
       open={Boolean(property)}
       onClose={onClose}
       title={property ? `Units · ${property.name}` : "Units"}
-      description="Each unit has its own ID, rent and occupancy status. Tenant inquiries can target a specific unit."
+      description="Each unit has its own name, rent and occupancy status. Tenant inquiries can target a specific unit."
       size="xl"
       footer={
         <div className="flex justify-end gap-2">
@@ -962,139 +1068,216 @@ function UnitsModal({
       <div className="space-y-5">
         {units.length === 0 ? (
           <p className="rounded-lg border border-hairline bg-surface-subtle px-4 py-3 text-[13px] text-slate">
-            No units yet. Add one below, or generate a numbered block.
+            No units yet. Add one below.
           </p>
         ) : (
           <ul className="divide-y divide-hairline overflow-hidden rounded-lg border border-hairline">
             {units.map((unit) => (
-              <li key={unit.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-ink">
-                    Unit {unit.unit_number} · {unit.unit_type}
-                  </p>
-                  <p className="text-[11.5px] text-slate">
-                    {unit.bedrooms} bed · {formatMoney(unit.rent_amount_cents)} / month · {unit.inquiry_count} inquir
-                    {unit.inquiry_count === 1 ? "y" : "ies"}
-                  </p>
+              <li key={unit.id} className="px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-ink">
+                      Unit {unit.unit_number} · {unit.unit_type}
+                    </p>
+                    <p className="text-[11.5px] text-slate">
+                      {unit.bedrooms} bed · {unit.bathrooms ?? 1} bath · {unit.toilets ?? 0} toilet
+                      {(unit.toilets ?? 0) === 1 ? "" : "s"} · {formatMoney(unit.rent_amount_cents)} / year ·{" "}
+                      {unit.inquiry_count} inquir
+                      {unit.inquiry_count === 1 ? "y" : "ies"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={OCCUPANCY_TONE[unit.occupancy_status]}>{unit.occupancy_status}</Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => (editingId === unit.id ? resetForm() : editUnit(unit))}
+                      aria-label={`Edit unit ${unit.unit_number}`}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeUnit(unit)}
+                      aria-label={`Delete unit ${unit.unit_number}`}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={OCCUPANCY_TONE[unit.occupancy_status]}>{unit.occupancy_status}</Badge>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => editUnit(unit)}
-                    aria-label={`Edit unit ${unit.unit_number}`}
+                {editingId === unit.id ? (
+                  <form
+                    onSubmit={submit}
+                    className="mt-3 space-y-3 rounded-lg border border-hairline bg-surface-subtle p-4"
                   >
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => removeUnit(unit)} aria-label={`Delete unit ${unit.unit_number}`}>
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
+                    <p className="text-[13px] font-semibold text-ink">Edit unit {unit.unit_number}</p>
+                    <UnitFields form={form} update={update} idPrefix={`edit-${unit.id}`} />
+                    <UnitFiles unitId={unit.id} onChanged={onChanged} />
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="submit" size="sm" loading={saving}>
+                        Save unit
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
+                        Cancel
+                      </Button>
+                    </div>
+                    {error ? (
+                      <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-[12.5px] text-danger">
+                        {error}
+                      </p>
+                    ) : null}
+                  </form>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        {editingId ? null : (
           <form onSubmit={submit} className="space-y-3 rounded-lg border border-hairline bg-surface-subtle p-4">
-            <p className="text-[13px] font-semibold text-ink">{editingId ? "Edit unit" : "Add a unit"}</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Unit number or name" htmlFor="unit-number" required>
-                <Input id="unit-number" value={form.unitNumber} onChange={update("unitNumber")} required />
-              </FormField>
-              <FormField label="Unit type" htmlFor="unit-type" required>
-                <Input id="unit-type" value={form.unitType} onChange={update("unitType")} required />
-              </FormField>
-              <FormField label="Bedrooms" htmlFor="unit-bedrooms">
-                <Input id="unit-bedrooms" type="number" min={0} max={50} value={form.bedrooms} onChange={update("bedrooms")} />
-              </FormField>
-              <FormField label="Occupancy" htmlFor="unit-occupancy">
-                <Select id="unit-occupancy" value={form.occupancyStatus} onChange={update("occupancyStatus")}>
-                  <option value="available">Available</option>
-                  <option value="occupied">Occupied</option>
-                  <option value="maintenance">Maintenance</option>
-                </Select>
-              </FormField>
-              <FormField label="Monthly rent" htmlFor="unit-rent">
-                <Input id="unit-rent" type="number" min={0} step="0.01" value={form.rent} onChange={update("rent")} />
-              </FormField>
-              <FormField label="Description" htmlFor="unit-description">
-                <Input id="unit-description" value={form.description} onChange={update("description")} maxLength={1000} />
-              </FormField>
-            </div>
+            <p className="text-[13px] font-semibold text-ink">Add a unit</p>
+            <UnitFields form={form} update={update} idPrefix="unit" />
             <div className="flex flex-wrap gap-2">
               <Button type="submit" size="sm" loading={saving}>
-                {editingId ? "Save unit" : "Add unit"}
+                Add unit
               </Button>
-              {editingId ? (
-                <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-                  Cancel edit
-                </Button>
-              ) : null}
             </div>
-            {editingId && property ? (
-              <UnitFiles unitId={editingId} onChanged={onChanged} />
-            ) : null}
-          </form>
-
-          <div className="space-y-3 rounded-lg border border-hairline bg-surface-subtle p-4">
-            <p className="text-[13px] font-semibold text-ink">Generate numbered units</p>
-            <p className="text-[12px] text-slate">
-              Adds units numbered 1 to the count you choose, skipping numbers that already exist.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="How many units" htmlFor="bulk-count">
-                <Input
-                  id="bulk-count"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={bulk.count}
-                  onChange={(event) => setBulk((current) => ({ ...current, count: event.target.value }))}
-                />
-              </FormField>
-              <FormField label="Unit type" htmlFor="bulk-type">
-                <Input
-                  id="bulk-type"
-                  value={bulk.unitType}
-                  onChange={(event) => setBulk((current) => ({ ...current, unitType: event.target.value }))}
-                />
-              </FormField>
-              <FormField label="Bedrooms" htmlFor="bulk-bedrooms">
-                <Input
-                  id="bulk-bedrooms"
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={bulk.bedrooms}
-                  onChange={(event) => setBulk((current) => ({ ...current, bedrooms: event.target.value }))}
-                />
-              </FormField>
-              <FormField label="Monthly rent" htmlFor="bulk-rent">
-                <Input
-                  id="bulk-rent"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={bulk.rent}
-                  onChange={(event) => setBulk((current) => ({ ...current, rent: event.target.value }))}
-                />
-              </FormField>
-            </div>
-            <Button type="button" variant="secondary" size="sm" loading={saving} onClick={generate}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Generate units
-            </Button>
             {error ? (
               <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-[12.5px] text-danger">
                 {error}
               </p>
             ) : null}
-          </div>
-        </div>
+          </form>
+        )}
       </div>
+    </Modal>
+  );
+}
+
+function UnitSetupWizard({
+  wizard,
+  onClose,
+  onFinished,
+}: {
+  wizard: { propertyId: string; propertyName: string; count: number } | null;
+  onClose: () => void;
+  onFinished: () => void;
+}) {
+  const { toast } = useToast();
+  const [index, setIndex] = useState(0);
+  const [done, setDone] = useState(0);
+  const [form, setForm] = useState(EMPTY_UNIT_FORM);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (wizard) {
+      setIndex(0);
+      setDone(0);
+      setForm({ ...EMPTY_UNIT_FORM, unitNumber: "1" });
+      setError(null);
+    }
+  }, [wizard]);
+
+  const update = (field: keyof typeof form) => (
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => setForm((current) => ({ ...current, [field]: event.target.value }));
+
+  const submitStep = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!wizard) return;
+    const rent = Number(form.rent);
+    if (!form.unitNumber.trim()) {
+      setError("Enter a unit name or number.");
+      return;
+    }
+    if (!Number.isInteger(rent) || rent < 0) {
+      setError("Enter the yearly rent as a whole number.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
+        method: "POST",
+        body: JSON.stringify({
+          propertyId: wizard.propertyId,
+          unitNumber: form.unitNumber,
+          unitType: form.unitType,
+          bedrooms: Math.round(Number(form.bedrooms || 0)),
+          bathrooms: Math.round(Number(form.bathrooms || 0)),
+          toilets: Math.round(Number(form.toilets || 0)),
+          occupancyStatus: form.occupancyStatus,
+          rentAmountCents: rent * 100,
+          description: form.description || null,
+        }),
+      });
+      const nextDone = done + 1;
+      setDone(nextDone);
+      if (nextDone >= wizard.count) {
+        toast({
+          title: "Property added",
+          description: `${wizard.propertyName} and ${wizard.count} ${wizard.count === 1 ? "unit" : "units"} are ready.`,
+        });
+        onFinished();
+      } else {
+        setForm({ ...EMPTY_UNIT_FORM, unitNumber: String(nextDone + 1) });
+        setIndex(nextDone);
+      }
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "The unit could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const step = wizard ? Math.min(index, wizard.count - 1) : 0;
+
+  return (
+    <Modal
+      open={Boolean(wizard)}
+      onClose={onClose}
+      title={wizard ? `Set up units · ${wizard.propertyName}` : "Set up units"}
+      description={
+        wizard
+          ? `Unit ${step + 1} of ${wizard.count}. Each unit is saved as you go — finish the rest later from the property's Units panel if you need to.`
+          : undefined
+      }
+      size="lg"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Finish later
+          </Button>
+          <Button type="submit" form="unit-wizard-form" loading={saving}>
+            {wizard && step + 1 >= wizard.count ? "Save and finish" : "Save and continue"}
+          </Button>
+        </div>
+      }
+    >
+      {wizard ? (
+        <div className="mb-4 flex items-center gap-1.5">
+          {Array.from({ length: wizard.count }, (_, itemIndex) => (
+            <span
+              key={itemIndex}
+              className={`h-1.5 flex-1 rounded-full ${
+                itemIndex < done ? "bg-brand-600" : itemIndex === step ? "bg-brand-300" : "bg-hairline"
+              }`}
+            />
+          ))}
+        </div>
+      ) : null}
+      <form id="unit-wizard-form" onSubmit={submitStep} className="space-y-4">
+        <UnitFields form={form} update={update} idPrefix="wizard" />
+        {error ? (
+          <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger">
+            {error}
+          </p>
+        ) : null}
+      </form>
     </Modal>
   );
 }

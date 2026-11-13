@@ -22,11 +22,11 @@ export function LandlordReview({
   currentAddress,
   reasonForMoving,
   maritalStatus,
-  childrenCount,
-  dependentsCount,
+  occupantsCount,
   employmentStatus,
   employer,
   occupation,
+  employmentCategory,
   incomeRange,
   religionState,
   notes,
@@ -48,11 +48,11 @@ export function LandlordReview({
   currentAddress: string | null;
   reasonForMoving: string | null;
   maritalStatus: string | null;
-  childrenCount: number | null;
-  dependentsCount: number | null;
+  occupantsCount: number | null;
   employmentStatus: string | null;
   employer: string | null;
   occupation: string | null;
+  employmentCategory?: string | null;
   incomeRange: string | null;
   religionState: string | null;
   notes: string | null;
@@ -121,19 +121,14 @@ export function LandlordReview({
           <Item label="Phone" value={applicantPhone || "Not provided"} />
           <Item label="Current address" value={currentAddress || "Not provided"} />
           <Item label="Marital status" value={maritalStatus || "Not provided"} />
-          {maritalStatus === "Single" ? null : (
-            <Item
-              label="Children"
-              value={childrenCount === null ? "Not provided" : String(childrenCount)}
-            />
-          )}
           <Item
-            label="Dependents"
-            value={dependentsCount === null ? "Not provided" : String(dependentsCount)}
+            label="Occupants (including applicant)"
+            value={occupantsCount === null ? "Not provided" : String(occupantsCount)}
           />
           <Item label="Employment" value={employmentStatus || "Not provided"} />
-          <Item label="Employer" value={employer || "Not provided"} />
-          <Item label="Occupation" value={occupation || "Not provided"} />
+          {employer ? <Item label="Employer" value={employer} /> : null}
+          {occupation ? <Item label="Occupation" value={occupation} /> : null}
+          {employmentCategory ? <Item label="Industry or category" value={employmentCategory} /> : null}
           <Item label="Income range" value={incomeRange || "Not provided"} />
           {religionState ? <Item label="Religion or state" value={religionState} /> : null}
           <Item label="Reason for moving" value={reasonForMoving || "Not provided"} />

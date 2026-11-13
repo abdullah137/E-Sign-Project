@@ -134,6 +134,8 @@ export interface PropertyUnitRow {
   unit_number: string;
   unit_type: string;
   bedrooms: number;
+  bathrooms: number;
+  toilets: number;
   occupancy_status: UnitOccupancy;
   rent_amount_cents: number;
   description: string | null;
@@ -184,6 +186,7 @@ export interface InquiryRow {
   id_type: string | null;
   id_number: string | null;
   employment_address: string | null;
+  employment_category: string | null;
   occupants_count: number | null;
   dependents_count: number | null;
   bedrooms_required: number | null;
@@ -345,6 +348,7 @@ export interface InquirySubmission {
   employer?: string | null;
   occupation?: string | null;
   employmentAddress?: string | null;
+  employmentCategory?: string | null;
   incomeRange?: string | null;
   religionState?: string | null;
   occupantsCount?: number | null;
@@ -1239,22 +1243,44 @@ export interface UnitInput {
   unitNumber: string;
   unitType: string;
   bedrooms: number;
+  bathrooms?: number;
+  toilets?: number;
   occupancyStatus?: UnitOccupancy;
   rentAmountCents: number;
   description?: string | null;
 }
 
-function unitValues(input: UnitInput): [string, string, number, UnitOccupancy, number, string | null] {
+function unitValues(input: UnitInput): {
+  unitNumber: string;
+  unitType: string;
+  bedrooms: number;
+  bathrooms: number;
+  toilets: number;
+  occupancy: UnitOccupancy;
+  rent: number;
+  description: string | null;
+} {
   const unitNumber = text(input.unitNumber, 40);
   const unitType = text(input.unitType, 60, "Standard");
   if (!unitNumber) throw new ValidationError("Add a unit name or number.");
   const bedrooms = Math.max(0, Math.min(50, Math.round(input.bedrooms || 0)));
+  const bathrooms = Math.max(0, Math.min(50, Math.round(input.bathrooms ?? 1)));
+  const toilets = Math.max(0, Math.min(50, Math.round(input.toilets ?? 0)));
   const occupancy = (input.occupancyStatus ?? "available") as UnitOccupancy;
   if (!["available", "occupied", "maintenance"].includes(occupancy)) {
     throw new ValidationError("Choose a valid occupancy status.");
   }
   const rent = Math.max(0, Math.min(100_000_000, Math.round(input.rentAmountCents || 0)));
-  return [unitNumber, unitType, bedrooms, occupancy, rent, isoOrNull(input.description)];
+  return {
+    unitNumber,
+    unitType,
+    bedrooms,
+    bathrooms,
+    toilets,
+    occupancy,
+    rent,
+    description: isoOrNull(input.description),
+  };
 }
 
 function refreshUnitCount(db: DatabaseSync, propertyId: string): void {
@@ -1273,7 +1299,7 @@ export function createUnit(
 ): PropertyUnitRow {
   const property = getProperty(db, input.workspaceId, input.propertyId);
   if (!property) throw new NotFoundError("Property not found.");
-  const [unitNumber, unitType, bedrooms, occupancy, rent, description] = unitValues(input);
+  const { unitNumber, unitType, bedrooms, bathrooms, toilets, occupancy, rent, description } = unitValues(input);
   const duplicate = db
     .prepare("SELECT id FROM property_units WHERE property_id = ? AND unit_number = ?")
     .get(property.id, unitNumber);
@@ -1283,9 +1309,9 @@ export function createUnit(
   transaction(db, () => {
     db.prepare(
       `INSERT INTO property_units
-        (id, workspace_id, property_id, unit_number, unit_type, bedrooms, occupancy_status,
-         rent_amount_cents, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, workspace_id, property_id, unit_number, unit_type, bedrooms, bathrooms, toilets,
+         occupancy_status, rent_amount_cents, description, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.workspaceId,
@@ -1293,6 +1319,8 @@ export function createUnit(
       unitNumber,
       unitType,
       bedrooms,
+      bathrooms,
+      toilets,
       occupancy,
       rent,
       description,
@@ -1344,20 +1372,22 @@ export function updateUnit(
 ): PropertyUnitRow {
   const current = getUnit(db, input.workspaceId, input.unitId);
   if (!current) throw new NotFoundError("Unit not found.");
-  const [unitNumber, unitType, bedrooms, occupancy, rent, description] = unitValues(input);
+  const { unitNumber, unitType, bedrooms, bathrooms, toilets, occupancy, rent, description } = unitValues(input);
   const duplicate = db
     .prepare("SELECT id FROM property_units WHERE property_id = ? AND unit_number = ? AND id != ?")
     .get(current.property_id, unitNumber, current.id);
   if (duplicate) throw new ConflictError("Another unit already uses this name or number.");
   const now = nowIso();
   db.prepare(
-    `UPDATE property_units SET unit_number = ?, unit_type = ?, bedrooms = ?, occupancy_status = ?,
-       rent_amount_cents = ?, description = ?, updated_at = ?
+    `UPDATE property_units SET unit_number = ?, unit_type = ?, bedrooms = ?, bathrooms = ?, toilets = ?,
+       occupancy_status = ?, rent_amount_cents = ?, description = ?, updated_at = ?
      WHERE id = ? AND workspace_id = ?`,
   ).run(
     unitNumber,
     unitType,
     bedrooms,
+    bathrooms,
+    toilets,
     occupancy,
     rent,
     description,
@@ -1583,7 +1613,6 @@ export function createInquiry(
   const phone = text(input.applicantPhone, 40);
   if (name.length < 2) throw new ValidationError("Enter the applicant's full name.");
   if (!isValidEmail(email)) throw new ValidationError("Enter a valid applicant email address.");
-  if (phone.length < 5) throw new ValidationError("Enter an applicant phone number.");
   if (
     input.inquiryFeeCents !== undefined &&
     input.inquiryFeeCents !== null &&
@@ -1969,6 +1998,7 @@ export async function submitInquiry(
   const reason = text(details.reasonForMoving, 600);
   const marital = text(details.maritalStatus, 60);
   const employment = text(details.employmentStatus, 80);
+  const employmentCategory = text(details.employmentCategory, 120);
   const income = text(details.incomeRange, 80);
   const signatureName = text(details.signatureName, 120);
   if (currentAddress.length < 5) throw new ValidationError("Enter your current address.");
@@ -1982,10 +2012,27 @@ export async function submitInquiry(
     }
     unitId = unit.id;
   }
-  const children = marital === "Single" ? 0 : Math.max(0, Math.min(20, Math.round(details.childrenCount || 0)));
-  const occupants = Math.max(0, Math.min(30, Math.round(details.occupantsCount ?? children)));
-  const dependents = Math.max(0, Math.min(30, Math.round(details.dependentsCount ?? 0)));
-  const bedroomsRequired = Math.max(0, Math.min(20, Math.round(details.bedroomsRequired ?? 0)));
+  const EMPLOYED_STATUSES = ["Employed full-time", "Employed part-time"];
+  const INDEPENDENT_STATUSES = ["Contract or freelance", "Self-employed"];
+  const BARE_STATUSES = ["Student", "Retired", "Unemployed", "Other"];
+  let employer: string | null = null;
+  let occupation: string | null = null;
+  let employmentAddress: string | null = null;
+  let storedEmploymentCategory: string | null = null;
+  if (employment && EMPLOYED_STATUSES.includes(employment)) {
+    employer = isoOrNull(text(details.employer, 160));
+    occupation = isoOrNull(text(details.occupation, 160));
+    employmentAddress = isoOrNull(text(details.employmentAddress, 240));
+  } else if (employment && INDEPENDENT_STATUSES.includes(employment)) {
+    storedEmploymentCategory = isoOrNull(employmentCategory);
+    occupation = isoOrNull(text(details.occupation, 160));
+  } else if (employment && !BARE_STATUSES.includes(employment)) {
+    throw new ValidationError("Choose a valid employment status.");
+  }
+  const children = 0;
+  const occupants = Math.max(0, Math.min(30, Math.round(details.occupantsCount ?? 1)));
+  const dependents = 0;
+  const bedroomsRequired = 0;
   const declaration = details.declarationAccepted === false ? 0 : 1;
   const guarantors = (details.guarantors || [])
     .map((guarantor) => ({
@@ -2045,7 +2092,7 @@ export async function submitInquiry(
       .prepare(
         `UPDATE inquiries SET unit_id = ?, current_address = ?, current_city = ?, current_state = ?,
            reason_for_moving = ?, marital_status = ?, children_count = ?, employment_status = ?, employer = ?,
-           occupation = ?, employment_address = ?, income_range = ?, religion_state = ?,
+           occupation = ?, employment_address = ?, employment_category = ?, income_range = ?, religion_state = ?,
            occupants_count = ?, dependents_count = ?, bedrooms_required = ?, state_of_origin = ?,
            additional_info = ?, declaration_accepted = ?, notes = ?, signature_name = ?, status = 'SUBMITTED',
            payment_status = ?, payment_reference = ?, payment_url = ?, payment_fee_cents = ?,
@@ -2061,9 +2108,10 @@ export async function submitInquiry(
         isoOrNull(details.maritalStatus),
         children,
         isoOrNull(details.employmentStatus),
-        isoOrNull(details.employer),
-        isoOrNull(details.occupation),
-        isoOrNull(details.employmentAddress),
+        employer,
+        occupation,
+        employmentAddress,
+        storedEmploymentCategory,
         isoOrNull(details.incomeRange),
         isoOrNull(details.religionState),
         occupants,
@@ -2615,9 +2663,9 @@ export async function createAgreementFromPrecedent(
     propertyAddress: [detail.property.address_line1, detail.property.city, detail.property.state, detail.property.postal_code]
       .filter(Boolean)
       .join(", "),
-    rentLabel: `${formatMoney(rent)} per month`,
-    monthlyRent: formatMoney(rent),
-    annualRent: formatMoney(rent * 12),
+    rentLabel: `${formatMoney(rent)} per year`,
+    monthlyRent: formatMoney(Math.round(rent / 12)),
+    annualRent: formatMoney(rent),
     startDate: formatLongDate(start),
     endDate: formatLongDate(end),
     jurisdiction,
@@ -3146,6 +3194,7 @@ export function getInquirySummaryPdf(
     employer: input.inquiry.employer,
     occupation: input.inquiry.occupation,
     employmentAddress: input.inquiry.employment_address,
+    employmentCategory: input.inquiry.employment_category,
     incomeRange: input.inquiry.income_range,
     religionState: input.inquiry.religion_state,
     idType: input.inquiry.id_type,
@@ -3165,7 +3214,7 @@ export function getInquirySummaryPdf(
     propertyListingType: input.property.listing_type,
     propertyBedrooms: input.property.bedrooms,
     propertyBathrooms: input.property.bathrooms,
-    monthlyRent: `${formatMoney(input.property.rent_amount_cents)} per month`,
+    monthlyRent: `${formatMoney(input.property.rent_amount_cents)} per year`,
     passportPhoto: passportFile
       ? { bytes: readInquiryFile(passportFile), mediaType: passportFile.mime }
       : null,

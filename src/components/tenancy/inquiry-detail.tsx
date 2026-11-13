@@ -489,25 +489,24 @@ export function InquiryDetail({
               <Item label="Current address" value={inquiry.current_address || "Not provided"} />
               <Item label="Reason for moving" value={inquiry.reason_for_moving || "Not provided"} />
               <Item label="Marital status" value={inquiry.marital_status || "Not provided"} />
-              {inquiry.marital_status === "Single" ? (
-                <Item label="Dependents" value={inquiry.dependents_count === null ? "Not provided" : String(inquiry.dependents_count)} />
-              ) : (
-                <>
-                  <Item label="Children" value={inquiry.children_count === null ? "Not provided" : String(inquiry.children_count)} />
-                  <Item label="Dependents" value={inquiry.dependents_count === null ? "Not provided" : String(inquiry.dependents_count)} />
-                </>
-              )}
+              <Item
+                label="Occupants (including applicant)"
+                value={inquiry.occupants_count === null ? "Not provided" : String(inquiry.occupants_count)}
+              />
               <Item label="Employment" value={inquiry.employment_status || "Not provided"} />
-              <Item label="Employer" value={inquiry.employer || "Not provided"} />
-              <Item label="Occupation" value={inquiry.occupation || "Not provided"} />
-              <Item label="Employment address" value={inquiry.employment_address || "Not provided"} />
+              {inquiry.employer ? <Item label="Employer" value={inquiry.employer} /> : null}
+              {inquiry.occupation ? <Item label="Occupation" value={inquiry.occupation} /> : null}
+              {inquiry.employment_address ? (
+                <Item label="Employment address" value={inquiry.employment_address} />
+              ) : null}
+              {inquiry.employment_category ? (
+                <Item label="Industry or category" value={inquiry.employment_category} />
+              ) : null}
               <Item label="Income range" value={inquiry.income_range || "Not provided"} />
               <Item
                 label="Unit requested"
                 value={unit ? `Unit ${unit.unit_number} · ${unit.unit_type}` : "Whole property"}
               />
-              <Item label="Bedrooms required" value={inquiry.bedrooms_required === null ? "Not provided" : String(inquiry.bedrooms_required)} />
-              <Item label="Occupants in compound" value={inquiry.occupants_count === null ? "Not provided" : String(inquiry.occupants_count)} />
               <Item label="State of origin" value={inquiry.state_of_origin || inquiry.religion_state || "Not provided"} />
               <Item label="Typed signature" value={inquiry.signature_name || "Not signed"} />
               <Item
@@ -628,7 +627,7 @@ export function InquiryDetail({
                 {property.listingType === "part" ? "Part of building" : "Entire property"}
               </p>
               <p className="text-[12.5px] text-slate">
-                {formatMoney(unit?.rent_amount_cents || property.rentAmountCents)} per month
+                {formatMoney(unit?.rent_amount_cents || property.rentAmountCents)} per year
               </p>
             </div>
             <div className="mt-4 border-t border-hairline pt-4">
@@ -758,7 +757,7 @@ export function InquiryDetail({
           </FormField>
           <div className="rounded-lg border border-hairline bg-surface-subtle px-4 py-3 text-[12px] leading-5 text-slate sm:col-span-2">
             <p>
-              Monthly rent ({formatMoney(unit?.rent_amount_cents || property.rentAmountCents)}), jurisdiction and the
+              Yearly rent ({formatMoney(unit?.rent_amount_cents || property.rentAmountCents)}), jurisdiction and the
               lawyer signatory are taken from the property, unit and your registration details.
             </p>
             <p className="mt-1">

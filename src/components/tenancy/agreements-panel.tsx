@@ -84,7 +84,7 @@ export function AgreementsPanel({ agreements }: { agreements: AgreementListRow[]
                   {agreement.property_name ?? "Property removed"}
                   {agreement.property_reference ? ` (${agreement.property_reference})` : ""}
                   {agreement.unit_number ? ` · Unit ${agreement.unit_number}` : ""} ·{" "}
-                  {agreement.tenant_name ?? "Tenant"} · {formatMoney(agreement.rent_amount_cents)} / month
+                  {agreement.tenant_name ?? "Tenant"} · {formatMoney(agreement.rent_amount_cents)} / year
                 </p>
                 <p className="mt-0.5 text-[12px] text-slate">
                   {formatDate(agreement.start_date)} – {formatDate(agreement.end_date)} ·{" "}

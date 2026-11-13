@@ -78,7 +78,7 @@ export default async function TenantInquiryPage({ params }: { params: Promise<{ 
             propertyName={property.name}
             propertyReference={property.reference}
             propertyAddress={address}
-            rentLabel={`${formatMoney(unit?.rent_amount_cents || property.rent_amount_cents)} per month`}
+            rentLabel={`${formatMoney(unit?.rent_amount_cents || property.rent_amount_cents)} per year`}
             initialUnitId={inquiry.unit_id}
             applicantName={inquiry.applicant_name}
             applicantEmail={inquiry.applicant_email}
