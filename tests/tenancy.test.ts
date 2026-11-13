@@ -77,8 +77,10 @@ const submission = {
   currentAddress: "18 Willow Lane, Austin, TX",
   reasonForMoving: "Current lease ends soon.",
   maritalStatus: "Single",
-  childrenCount: 0,
+  occupantsCount: 2,
   employmentStatus: "Employed full-time",
+  employer: "Hart & Lane",
+  occupation: "Solicitor",
   incomeRange: "60,000 – 99,999",
   signatureName: "Priya Raman",
   guarantors: [{ name: "Michael Raman", email: "michael@example.com", relationship: "Father" }],
@@ -201,6 +203,99 @@ describe("tenant inquiry links", () => {
       /already been submitted/i,
     );
     expect(getInquiryByTenantToken(db, "not-a-real-token").ok).toBe(false);
+  });
+
+  it("stores the single occupants field and applies the dynamic employment rules", async () => {
+    const db = makeDb();
+    const { userId, workspaceId, property } = seedLandlordAndProperty(db);
+
+    const employed = createInquiry(db, {
+      workspaceId,
+      userId,
+      userLabel: "Dana Owner",
+      propertyId: property.id,
+      applicantName: "Priya Raman",
+      applicantEmail: "priya@example.com",
+      applicantPhone: "+1 512 555 0101",
+    });
+    const employedToken = employed.link.split("/inquiry/")[1];
+    await submitInquiry(db, {
+      rawToken: employedToken,
+      submission: {
+        ...submission,
+        occupantsCount: 4,
+        employmentStatus: "Employed part-time",
+        employer: "Hart & Lane",
+        occupation: "Paralegal",
+        employmentAddress: "14 Broad Street",
+      },
+    });
+    const employedDetail = getInquiry(db, workspaceId, employed.inquiry.id);
+    expect(employedDetail.inquiry.occupants_count).toBe(4);
+    expect(employedDetail.inquiry.children_count).toBe(0);
+    expect(employedDetail.inquiry.dependents_count).toBe(0);
+    expect(employedDetail.inquiry.bedrooms_required).toBe(0);
+    expect(employedDetail.inquiry.employer).toBe("Hart & Lane");
+    expect(employedDetail.inquiry.occupation).toBe("Paralegal");
+    expect(employedDetail.inquiry.employment_address).toBe("14 Broad Street");
+    expect(employedDetail.inquiry.employment_category).toBeNull();
+
+    const independent = createInquiry(db, {
+      workspaceId,
+      userId,
+      userLabel: "Dana Owner",
+      propertyId: property.id,
+      applicantName: "Kemi Ade",
+      applicantEmail: "kemi@example.com",
+      applicantPhone: "+1 512 555 0101",
+    });
+    const independentToken = independent.link.split("/inquiry/")[1];
+    await submitInquiry(db, {
+      rawToken: independentToken,
+      submission: {
+        ...submission,
+        signatureName: "Kemi Ade",
+        guarantors: [],
+        employmentStatus: "Self-employed",
+        employmentCategory: "IT and Software",
+        employer: "Ignored Co",
+        occupation: "Designer",
+        employmentAddress: "Ignored Street",
+      },
+    });
+    const independentDetail = getInquiry(db, workspaceId, independent.inquiry.id);
+    expect(independentDetail.inquiry.employment_category).toBe("IT and Software");
+    expect(independentDetail.inquiry.occupation).toBe("Designer");
+    expect(independentDetail.inquiry.employer).toBeNull();
+    expect(independentDetail.inquiry.employment_address).toBeNull();
+
+    const student = createInquiry(db, {
+      workspaceId,
+      userId,
+      userLabel: "Dana Owner",
+      propertyId: property.id,
+      applicantName: "Tolu Balogun",
+      applicantEmail: "tolu@example.com",
+      applicantPhone: "+1 512 555 0101",
+    });
+    const studentToken = student.link.split("/inquiry/")[1];
+    await submitInquiry(db, {
+      rawToken: studentToken,
+      submission: {
+        ...submission,
+        signatureName: "Tolu Balogun",
+        guarantors: [],
+        employmentStatus: "Student",
+        employer: "Ignored Co",
+        occupation: "Ignored Role",
+        employmentCategory: "Accounting and Finance",
+      },
+    });
+    const studentDetail = getInquiry(db, workspaceId, student.inquiry.id);
+    expect(studentDetail.inquiry.employment_status).toBe("Student");
+    expect(studentDetail.inquiry.employer).toBeNull();
+    expect(studentDetail.inquiry.occupation).toBeNull();
+    expect(studentDetail.inquiry.employment_category).toBeNull();
   });
 });
 

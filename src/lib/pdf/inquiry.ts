@@ -32,6 +32,7 @@ export interface InquirySummaryInput {
   employer?: string | null;
   occupation?: string | null;
   employmentAddress?: string | null;
+  employmentCategory?: string | null;
   incomeRange?: string | null;
   religionState?: string | null;
   idType?: string | null;
@@ -177,13 +178,16 @@ export async function buildInquirySummaryPdf(input: InquirySummaryInput): Promis
   row("State or region", input.currentState || "Not provided");
   row("State of origin", input.stateOfOrigin || "Not provided");
   row("Marital status", input.maritalStatus || "Not provided");
-  if (input.maritalStatus !== "Single") {
-    row("Children", input.childrenCount === null || input.childrenCount === undefined ? "Not provided" : String(input.childrenCount));
-  }
-  row("Dependents", input.dependentsCount === null || input.dependentsCount === undefined ? "Not provided" : String(input.dependentsCount));
-  row("Occupants", input.occupantsCount === null || input.occupantsCount === undefined ? "Not provided" : String(input.occupantsCount));
-  row("Bedrooms required", input.bedroomsRequired === null || input.bedroomsRequired === undefined ? "Not provided" : String(input.bedroomsRequired));
+  row(
+    "Occupants (including you)",
+    input.occupantsCount === null || input.occupantsCount === undefined
+      ? "Not provided"
+      : String(input.occupantsCount),
+  );
   row("Employment", [input.employmentStatus, input.occupation, input.employer].filter(Boolean).join(" · ") || "Not provided");
+  if (input.employmentCategory) {
+    row("Industry or category", input.employmentCategory);
+  }
   row("Employment address", input.employmentAddress || "Not provided");
   row("Income range", input.incomeRange || "Not provided");
   row("Reason for moving", input.reasonForMoving || "Not provided");
@@ -201,7 +205,7 @@ export async function buildInquirySummaryPdf(input: InquirySummaryInput): Promis
     "Bedrooms / bathrooms",
     `${input.propertyBedrooms ?? "Not provided"} / ${input.propertyBathrooms ?? "Not provided"}`,
   );
-  row("Monthly rent", input.monthlyRent || "Not provided");
+  row("Yearly rent", input.monthlyRent || "Not provided");
   row("Landlord", `${input.landlordName} · ${input.landlordEmail}`);
   row("Landlord phone", input.landlordPhone || "Not provided");
 

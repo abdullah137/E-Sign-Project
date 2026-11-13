@@ -5,27 +5,20 @@ import { useRouter } from "next/navigation";
 import { Building2, FileText, Pencil, Plus, Trash2, Upload, UsersRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { FormField, Input, Select, Textarea } from "@/components/ui/input";
+import { FormField, Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, ApiClientError } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
 import type { LandlordFileRow, LandlordRow } from "@/lib/tenancy";
 
-const ID_TYPES = ["Passport", "National ID", "Driver's licence", "Other"];
-
 const EMPTY_FORM = {
   name: "",
   email: "",
   phone: "",
-  notes: "",
-  idType: "",
 };
 
 type FormState = typeof EMPTY_FORM;
-
-const MAX_ID_FILE_BYTES = 5 * 1024 * 1024;
-const ID_FILE_TYPES = ["application/pdf", "image/png", "image/jpeg"];
 
 export function LandlordsPanel({
   landlords,
@@ -44,8 +37,6 @@ export function LandlordsPanel({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [idFile, setIdFile] = useState<File | null>(null);
-  const [idFileError, setIdFileError] = useState<string | null>(null);
   const [documentsFor, setDocumentsFor] = useState<LandlordRow | null>(null);
 
   const update = (field: keyof FormState) => (
@@ -54,34 +45,11 @@ export function LandlordsPanel({
 
   const close = () => {
     setOpen(false);
-    setIdFile(null);
-    setIdFileError(null);
-  };
-
-  const pickIdFile = (file: File | null) => {
-    setIdFileError(null);
-    if (!file) {
-      setIdFile(null);
-      return;
-    }
-    const isAllowedType =
-      ID_FILE_TYPES.includes(file.type) || /\.(pdf|png|jpe?g)$/i.test(file.name);
-    if (!isAllowedType) {
-      setIdFileError("Choose a PDF, PNG or JPEG file.");
-      return;
-    }
-    if (file.size > MAX_ID_FILE_BYTES) {
-      setIdFileError("The document must be 5 MB or smaller.");
-      return;
-    }
-    setIdFile(file);
   };
 
   const startCreate = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
-    setIdFile(null);
-    setIdFileError(null);
     setError(null);
     setOpen(true);
   };
@@ -92,11 +60,7 @@ export function LandlordsPanel({
       name: landlord.name,
       email: landlord.email,
       phone: landlord.phone,
-      notes: landlord.notes ?? "",
-      idType: landlord.id_type ?? "",
     });
-    setIdFile(null);
-    setIdFileError(null);
     setError(null);
     setOpen(true);
   };
@@ -109,16 +73,14 @@ export function LandlordsPanel({
       name: form.name,
       email: form.email,
       phone: form.phone,
-      notes: form.notes || null,
-      idType: form.idType || null,
+      notes: editing?.notes ?? null,
+      idType: editing?.id_type ?? null,
       idNumber: editing?.id_number ?? null,
       lawFirmName: editing?.law_firm_name ?? null,
       lawFirmAddress: editing?.law_firm_address ?? null,
       lawFirmPhone: editing?.law_firm_phone ?? null,
       lawFirmEmail: editing?.law_firm_email ?? null,
     };
-    let landlordId = editing?.id;
-    let documentError: string | null = null;
     try {
       if (editing) {
         await apiFetch(`/api/tenancy/landlords/${editing.id}`, {
@@ -126,42 +88,18 @@ export function LandlordsPanel({
           body: JSON.stringify(payload),
         });
       } else {
-        const result = await apiFetch<{ landlord: LandlordRow }>("/api/tenancy/landlords", {
+        await apiFetch<{ landlord: LandlordRow }>("/api/tenancy/landlords", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        landlordId = result.landlord.id;
-      }
-      if (idFile && landlordId) {
-        try {
-          const body = new FormData();
-          body.set("file", idFile);
-          await apiFetch(`/api/tenancy/landlords/${landlordId}/files`, {
-            method: "POST",
-            body,
-          });
-        } catch (uploadError) {
-          documentError =
-            uploadError instanceof ApiClientError
-              ? uploadError.message
-              : "The ID document could not be uploaded.";
-        }
       }
       toast({
         title: editing ? "Landlord updated" : "Landlord added",
-        description: documentError
-          ? `Saved, but the ID document was not uploaded. ${documentError}`
-          : idFile
-            ? `${form.name}'s ID document was uploaded.`
-            : editing
-              ? `${form.name} has been saved.`
-              : `${form.name} can now be linked to properties.`,
+        description: editing ? `${form.name} has been saved.` : `${form.name} can now be linked to properties.`,
       });
       setOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
-      setIdFile(null);
-      setIdFileError(null);
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "The landlord could not be saved.");
@@ -292,77 +230,6 @@ export function LandlordsPanel({
           </FormField>
           <FormField label="Phone" htmlFor="landlord-phone" required>
             <Input id="landlord-phone" value={form.phone} onChange={update("phone")} required />
-          </FormField>
-          <FormField label="ID type" htmlFor="landlord-id-type" className="sm:col-span-2">
-            <Select id="landlord-id-type" value={form.idType} onChange={update("idType")}>
-              <option value="">Not recorded</option>
-              {ID_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-          <FormField
-            label="ID or passport document"
-            htmlFor="landlord-id-document"
-            hint="PDF, PNG or JPEG up to 5 MB. Stored privately for this workspace."
-            className="sm:col-span-2"
-          >
-            <div className="flex w-full flex-col gap-3 rounded border border-dashed border-hairline-strong bg-surface-subtle/30 p-3 sm:flex-row sm:items-center">
-              <label
-                htmlFor="landlord-id-document"
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-hairline bg-surface">
-                  <Upload className="h-4 w-4 text-brand-600" aria-hidden="true" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium text-ink">
-                    {idFile ? idFile.name : "Choose a PDF or image"}
-                  </span>
-                  <span className="block text-[11.5px] text-slate">
-                    {idFile ? formatBytes(idFile.size) : "No document selected"}
-                  </span>
-                </span>
-              </label>
-              <div className="flex shrink-0 items-center gap-2">
-                <label
-                  htmlFor="landlord-id-document"
-                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded border border-hairline bg-card px-3 text-[12px] font-medium text-ink hover:border-brand-500"
-                >
-                  <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-                  {idFile ? "Change" : "Browse"}
-                </label>
-                {idFile ? (
-                  <button
-                    type="button"
-                    className="text-[12px] font-medium text-slate hover:text-ink hover:underline"
-                    onClick={() => pickIdFile(null)}
-                  >
-                    Remove
-                  </button>
-                ) : null}
-              </div>
-              <input
-                id="landlord-id-document"
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                className="sr-only"
-                onChange={(event) => {
-                  pickIdFile(event.target.files?.[0] ?? null);
-                  event.target.value = "";
-                }}
-              />
-            </div>
-            {idFileError ? (
-              <p className="mt-1.5 text-[12px] text-danger" role="alert">
-                {idFileError}
-              </p>
-            ) : null}
-          </FormField>
-          <FormField label="Internal notes" htmlFor="landlord-notes" hint="Visible to your workspace only." className="sm:col-span-2">
-            <Textarea id="landlord-notes" value={form.notes} onChange={update("notes")} maxLength={1000} />
           </FormField>
           {error ? (
             <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger sm:col-span-2">

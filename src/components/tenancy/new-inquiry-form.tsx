@@ -29,7 +29,6 @@ export function NewInquiryForm({
     unitId: "",
     applicantName: "",
     applicantEmail: "",
-    applicantPhone: "",
     lawyerNote: "",
     inquiryFee: nairaInput(initialProperty?.inquiry_fee_cents ?? 0),
   });
@@ -57,8 +56,8 @@ export function NewInquiryForm({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const feeNaira = Number(form.inquiryFee);
-    if (!Number.isFinite(feeNaira) || feeNaira < 0 || feeNaira > 1_000_000) {
-      setError("Enter an inquiry fee between ₦0 and ₦1,000,000.");
+    if (!Number.isInteger(feeNaira) || feeNaira < 0 || feeNaira > 1_000_000) {
+      setError("Enter a whole-number inquiry fee between ₦0 and ₦1,000,000.");
       return;
     }
     setSaving(true);
@@ -73,9 +72,9 @@ export function NewInquiryForm({
             unitId: form.unitId || null,
             applicantName: form.applicantName,
             applicantEmail: form.applicantEmail,
-            applicantPhone: form.applicantPhone,
+            applicantPhone: "-",
             lawyerNote: form.lawyerNote || null,
-            inquiryFeeCents: Math.round(feeNaira * 100),
+            inquiryFeeCents: feeNaira * 100,
           }),
         },
       );
@@ -149,8 +148,8 @@ export function NewInquiryForm({
             {selected.category} · {selected.property_type} ·{" "}
             {selected.listing_type === "part" ? "Part of building" : "Entire property"} ·{" "}
             {selectedUnit
-              ? `Unit ${selectedUnit.unit_number} · ${selectedUnit.bedrooms} bed · ${formatMoney(selectedUnit.rent_amount_cents)} per month`
-              : `${selected.bedrooms} bedroom${selected.bedrooms === 1 ? "" : "s"} · ${selected.bathrooms} bathroom${selected.bathrooms === 1 ? "" : "s"} · ${formatMoney(selected.rent_amount_cents)} per month`}
+              ? `Unit ${selectedUnit.unit_number} · ${selectedUnit.bedrooms} bed · ${formatMoney(selectedUnit.rent_amount_cents)} per year`
+              : `${selected.bedrooms} bedroom${selected.bedrooms === 1 ? "" : "s"} · ${selected.bathrooms} bathroom${selected.bathrooms === 1 ? "" : "s"} · ${formatMoney(selected.rent_amount_cents)} per year`}
           </p>
         ) : null}
         <FormField
@@ -168,8 +167,8 @@ export function NewInquiryForm({
             type="number"
             min={0}
             max={1_000_000}
-            step="0.01"
-            inputMode="decimal"
+            step={1}
+            inputMode="numeric"
             value={form.inquiryFee}
             onChange={update("inquiryFee")}
             required
@@ -187,14 +186,9 @@ export function NewInquiryForm({
         <FormField label="Full name" htmlFor="inquiry-name" required>
           <Input id="inquiry-name" value={form.applicantName} onChange={update("applicantName")} required />
         </FormField>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Email" htmlFor="inquiry-email" required>
-            <Input id="inquiry-email" type="email" value={form.applicantEmail} onChange={update("applicantEmail")} required />
-          </FormField>
-          <FormField label="Phone" htmlFor="inquiry-phone" required>
-            <Input id="inquiry-phone" value={form.applicantPhone} onChange={update("applicantPhone")} required />
-          </FormField>
-        </div>
+        <FormField label="Email" htmlFor="inquiry-email" required>
+          <Input id="inquiry-email" type="email" value={form.applicantEmail} onChange={update("applicantEmail")} required />
+        </FormField>
         <FormField
           label="Internal note"
           htmlFor="inquiry-note"

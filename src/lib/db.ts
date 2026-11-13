@@ -325,6 +325,7 @@ CREATE TABLE IF NOT EXISTS property_units (
   unit_number TEXT NOT NULL,
   unit_type TEXT NOT NULL DEFAULT 'Standard',
   bedrooms INTEGER NOT NULL DEFAULT 0,
+  bathrooms INTEGER NOT NULL DEFAULT 1,
   occupancy_status TEXT NOT NULL DEFAULT 'available',
   rent_amount_cents INTEGER NOT NULL DEFAULT 0,
   description TEXT,
@@ -373,6 +374,7 @@ CREATE TABLE IF NOT EXISTS inquiries (
   id_type TEXT,
   id_number TEXT,
   employment_address TEXT,
+  employment_category TEXT,
   occupants_count INTEGER,
   dependents_count INTEGER,
   bedrooms_required INTEGER,
@@ -639,11 +641,16 @@ const PROPERTY_COLUMNS: Array<[string, string]> = [
   ["listing_type", "TEXT NOT NULL DEFAULT 'entire'"],
 ];
 
+const UNIT_COLUMNS: Array<[string, string]> = [
+  ["bathrooms", "INTEGER NOT NULL DEFAULT 1"],
+];
+
 const INQUIRY_COLUMNS: Array<[string, string]> = [
   ["unit_id", "TEXT"],
   ["id_type", "TEXT"],
   ["id_number", "TEXT"],
   ["employment_address", "TEXT"],
+  ["employment_category", "TEXT"],
   ["occupants_count", "INTEGER"],
   ["dependents_count", "INTEGER"],
   ["bedrooms_required", "INTEGER"],
@@ -694,6 +701,7 @@ export function migrateSchema(db: DatabaseSync): void {
   ensureColumns(db, "email_outbox", OUTBOX_COLUMNS);
   ensureColumns(db, "landlords", LANDLORD_COLUMNS);
   ensureColumns(db, "properties", PROPERTY_COLUMNS);
+  ensureColumns(db, "property_units", UNIT_COLUMNS);
   ensureColumns(db, "inquiries", INQUIRY_COLUMNS);
   ensureColumns(db, "agreements", AGREEMENT_COLUMNS);
 
