@@ -70,10 +70,10 @@ const EMPTY_UNIT_FORM = {
   unitType: "Standard",
   bedrooms: "1",
   bathrooms: "1",
+  toilets: "0",
   occupancyStatus: "available" as UnitOccupancy,
   rent: "",
   description: "",
-  images: [] as Array<{ file: File; url: string }>,
 };
 
 const STATUS_TONE: Record<PropertyStatus, "success" | "gold" | "danger" | "muted"> = {
@@ -863,26 +863,6 @@ export function PropertiesPanel({
   );
 }
 
-function acceptUnitImages(
-  files: FileList | null,
-): { accepted: Array<{ file: File; url: string }>; error: string | null } {
-  if (!files || files.length === 0) return { accepted: [], error: null };
-  const accepted: Array<{ file: File; url: string }> = [];
-  let error: string | null = null;
-  for (const file of Array.from(files)) {
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      error = "Upload PNG, JPEG or WebP images only.";
-      continue;
-    }
-    if (file.size > MAX_PROPERTY_IMAGE_BYTES) {
-      error = "Each image must be 5 MB or smaller.";
-      continue;
-    }
-    accepted.push({ file, url: URL.createObjectURL(file) });
-  }
-  return { accepted, error };
-}
-
 function UnitFields({
   form,
   update,
@@ -914,7 +894,7 @@ function UnitFields({
           onChange={update("bedrooms")}
         />
       </FormField>
-      <FormField label="Bathrooms and toilets" htmlFor={`${idPrefix}-bathrooms`}>
+      <FormField label="Bathrooms" htmlFor={`${idPrefix}-bathrooms`}>
         <Input
           id={`${idPrefix}-bathrooms`}
           type="number"
@@ -924,6 +904,18 @@ function UnitFields({
           inputMode="numeric"
           value={form.bathrooms}
           onChange={update("bathrooms")}
+        />
+      </FormField>
+      <FormField label="Toilets" htmlFor={`${idPrefix}-toilets`}>
+        <Input
+          id={`${idPrefix}-toilets`}
+          type="number"
+          min={0}
+          max={50}
+          step={1}
+          inputMode="numeric"
+          value={form.toilets}
+          onChange={update("toilets")}
         />
       </FormField>
       <FormField label="Occupancy" htmlFor={`${idPrefix}-occupancy`}>
@@ -956,67 +948,6 @@ function UnitFields({
   );
 }
 
-function UnitImagePicker({
-  images,
-  onPick,
-  onRemove,
-  idPrefix,
-}: {
-  images: Array<{ file: File; url: string }>;
-  onPick: (files: FileList | null) => void;
-  onRemove: (index: number) => void;
-  idPrefix: string;
-}) {
-  return (
-    <div className="rounded-lg border border-dashed border-hairline-strong bg-surface-subtle/30 p-3">
-      <div className="flex flex-wrap items-center gap-3">
-        {images.map((image, index) => (
-          <div key={image.url} className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={image.url}
-              alt={image.file.name}
-              className="h-16 w-20 rounded-md border border-hairline object-cover"
-            />
-            <button
-              type="button"
-              onClick={() => onRemove(index)}
-              aria-label={`Remove ${image.file.name}`}
-              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-white hover:bg-ink"
-            >
-              <X className="h-3 w-3" aria-hidden="true" />
-            </button>
-          </div>
-        ))}
-        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-hairline bg-card px-3 py-1.5 text-[12px] font-medium text-ink hover:border-brand-500">
-          <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-          Add photos
-          <input
-            id={idPrefix}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            className="sr-only"
-            onChange={(event) => {
-              onPick(event.target.files);
-              event.target.value = "";
-            }}
-          />
-        </label>
-        <span className="text-[11.5px] text-slate">PNG, JPEG or WebP, up to 5 MB each.</span>
-      </div>
-    </div>
-  );
-}
-
-async function uploadUnitImages(unitId: string, images: Array<{ file: File; url: string }>): Promise<void> {
-  for (const image of images) {
-    const body = new FormData();
-    body.set("file", image.file);
-    await apiFetch(`/api/tenancy/units/${unitId}/files`, { method: "POST", body });
-  }
-}
-
 function UnitsModal({
   property,
   units,
@@ -1033,21 +964,12 @@ function UnitsModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pendingUrlsRef = useRef<string[]>([]);
-
-  useEffect(() => {
-    if (!property) {
-      for (const url of pendingUrlsRef.current) URL.revokeObjectURL(url);
-      pendingUrlsRef.current = [];
-    }
-  }, [property]);
 
   const update = (field: keyof typeof form) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => setForm((current) => ({ ...current, [field]: event.target.value }));
 
   const resetForm = () => {
-    for (const image of form.images) URL.revokeObjectURL(image.url);
     setForm(EMPTY_UNIT_FORM);
     setEditingId(null);
     setError(null);
@@ -1060,29 +982,12 @@ function UnitsModal({
       unitType: unit.unit_type,
       bedrooms: String(unit.bedrooms),
       bathrooms: String(unit.bathrooms ?? 1),
+      toilets: String(unit.toilets ?? 0),
       occupancyStatus: unit.occupancy_status,
       rent: (unit.rent_amount_cents / 100).toString(),
       description: unit.description ?? "",
-      images: [],
     });
     setError(null);
-  };
-
-  const pickUnitImages = (files: FileList | null) => {
-    const { accepted, error: pickError } = acceptUnitImages(files);
-    if (pickError) setError(pickError);
-    if (accepted.length) {
-      for (const image of accepted) pendingUrlsRef.current.push(image.url);
-      setForm((current) => ({ ...current, images: [...current.images, ...accepted] }));
-    }
-  };
-
-  const removeUnitImage = (index: number) => {
-    setForm((current) => {
-      const target = current.images[index];
-      if (target) URL.revokeObjectURL(target.url);
-      return { ...current, images: current.images.filter((_, itemIndex) => itemIndex !== index) };
-    });
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -1104,6 +1009,7 @@ function UnitsModal({
       unitType: form.unitType,
       bedrooms: Math.round(Number(form.bedrooms || 0)),
       bathrooms: Math.round(Number(form.bathrooms || 0)),
+      toilets: Math.round(Number(form.toilets || 0)),
       occupancyStatus: form.occupancyStatus,
       rentAmountCents: rent * 100,
       description: form.description || null,
@@ -1115,23 +1021,10 @@ function UnitsModal({
         resetForm();
         onChanged();
       } else {
-        const result = await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
+        await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
           method: "POST",
           body: JSON.stringify({ propertyId: property.id, ...payload }),
         });
-        if (form.images.length > 0) {
-          try {
-            await uploadUnitImages(result.unit.id, form.images);
-          } catch (imageError) {
-            toast({
-              title: "Photos not saved",
-              description:
-                imageError instanceof ApiClientError
-                  ? `The unit was added. ${imageError.message}`
-                  : "The unit was added, but the photos could not be uploaded.",
-            });
-          }
-        }
         toast({ title: "Unit added", description: `Unit ${form.unitNumber} is ready.` });
         resetForm();
         onChanged();
@@ -1187,8 +1080,9 @@ function UnitsModal({
                       Unit {unit.unit_number} · {unit.unit_type}
                     </p>
                     <p className="text-[11.5px] text-slate">
-                      {unit.bedrooms} bed · {unit.bathrooms ?? 1} bath · {formatMoney(unit.rent_amount_cents)} /
-                      year · {unit.inquiry_count} inquir
+                      {unit.bedrooms} bed · {unit.bathrooms ?? 1} bath · {unit.toilets ?? 0} toilet
+                      {(unit.toilets ?? 0) === 1 ? "" : "s"} · {formatMoney(unit.rent_amount_cents)} / year ·{" "}
+                      {unit.inquiry_count} inquir
                       {unit.inquiry_count === 1 ? "y" : "ies"}
                     </p>
                   </div>
@@ -1221,12 +1115,6 @@ function UnitsModal({
                   >
                     <p className="text-[13px] font-semibold text-ink">Edit unit {unit.unit_number}</p>
                     <UnitFields form={form} update={update} idPrefix={`edit-${unit.id}`} />
-                    <UnitImagePicker
-                      images={form.images}
-                      onPick={pickUnitImages}
-                      onRemove={removeUnitImage}
-                      idPrefix={`edit-img-${unit.id}`}
-                    />
                     <UnitFiles unitId={unit.id} onChanged={onChanged} />
                     <div className="flex flex-wrap gap-2">
                       <Button type="submit" size="sm" loading={saving}>
@@ -1252,12 +1140,6 @@ function UnitsModal({
           <form onSubmit={submit} className="space-y-3 rounded-lg border border-hairline bg-surface-subtle p-4">
             <p className="text-[13px] font-semibold text-ink">Add a unit</p>
             <UnitFields form={form} update={update} idPrefix="unit" />
-            <UnitImagePicker
-              images={form.images}
-              onPick={pickUnitImages}
-              onRemove={removeUnitImage}
-              idPrefix="unit-img"
-            />
             <div className="flex flex-wrap gap-2">
               <Button type="submit" size="sm" loading={saving}>
                 Add unit
@@ -1290,7 +1172,6 @@ function UnitSetupWizard({
   const [form, setForm] = useState(EMPTY_UNIT_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pendingUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (wizard) {
@@ -1298,32 +1179,12 @@ function UnitSetupWizard({
       setDone(0);
       setForm({ ...EMPTY_UNIT_FORM, unitNumber: "1" });
       setError(null);
-    } else {
-      for (const url of pendingUrlsRef.current) URL.revokeObjectURL(url);
-      pendingUrlsRef.current = [];
     }
   }, [wizard]);
 
   const update = (field: keyof typeof form) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => setForm((current) => ({ ...current, [field]: event.target.value }));
-
-  const pickUnitImages = (files: FileList | null) => {
-    const { accepted, error: pickError } = acceptUnitImages(files);
-    if (pickError) setError(pickError);
-    if (accepted.length) {
-      for (const image of accepted) pendingUrlsRef.current.push(image.url);
-      setForm((current) => ({ ...current, images: [...current.images, ...accepted] }));
-    }
-  };
-
-  const removeUnitImage = (index: number) => {
-    setForm((current) => {
-      const target = current.images[index];
-      if (target) URL.revokeObjectURL(target.url);
-      return { ...current, images: current.images.filter((_, itemIndex) => itemIndex !== index) };
-    });
-  };
 
   const submitStep = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1340,7 +1201,7 @@ function UnitSetupWizard({
     setSaving(true);
     setError(null);
     try {
-      const result = await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
+      await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
         method: "POST",
         body: JSON.stringify({
           propertyId: wizard.propertyId,
@@ -1348,24 +1209,12 @@ function UnitSetupWizard({
           unitType: form.unitType,
           bedrooms: Math.round(Number(form.bedrooms || 0)),
           bathrooms: Math.round(Number(form.bathrooms || 0)),
+          toilets: Math.round(Number(form.toilets || 0)),
           occupancyStatus: form.occupancyStatus,
           rentAmountCents: rent * 100,
           description: form.description || null,
         }),
       });
-      if (form.images.length > 0) {
-        try {
-          await uploadUnitImages(result.unit.id, form.images);
-        } catch (imageError) {
-          toast({
-            title: "Photos not saved",
-            description:
-              imageError instanceof ApiClientError
-                ? `The unit was saved. ${imageError.message}`
-                : "The unit was saved, but the photos could not be uploaded.",
-          });
-        }
-      }
       const nextDone = done + 1;
       setDone(nextDone);
       if (nextDone >= wizard.count) {
@@ -1375,7 +1224,6 @@ function UnitSetupWizard({
         });
         onFinished();
       } else {
-        for (const image of form.images) URL.revokeObjectURL(image.url);
         setForm({ ...EMPTY_UNIT_FORM, unitNumber: String(nextDone + 1) });
         setIndex(nextDone);
       }
@@ -1424,12 +1272,6 @@ function UnitSetupWizard({
       ) : null}
       <form id="unit-wizard-form" onSubmit={submitStep} className="space-y-4">
         <UnitFields form={form} update={update} idPrefix="wizard" />
-        <UnitImagePicker
-          images={form.images}
-          onPick={pickUnitImages}
-          onRemove={removeUnitImage}
-          idPrefix="wizard-img"
-        />
         {error ? (
           <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger">
             {error}

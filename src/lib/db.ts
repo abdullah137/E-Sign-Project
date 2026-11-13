@@ -326,6 +326,7 @@ CREATE TABLE IF NOT EXISTS property_units (
   unit_type TEXT NOT NULL DEFAULT 'Standard',
   bedrooms INTEGER NOT NULL DEFAULT 0,
   bathrooms INTEGER NOT NULL DEFAULT 1,
+  toilets INTEGER NOT NULL DEFAULT 0,
   occupancy_status TEXT NOT NULL DEFAULT 'available',
   rent_amount_cents INTEGER NOT NULL DEFAULT 0,
   description TEXT,
@@ -643,6 +644,7 @@ const PROPERTY_COLUMNS: Array<[string, string]> = [
 
 const UNIT_COLUMNS: Array<[string, string]> = [
   ["bathrooms", "INTEGER NOT NULL DEFAULT 1"],
+  ["toilets", "INTEGER NOT NULL DEFAULT 0"],
 ];
 
 const INQUIRY_COLUMNS: Array<[string, string]> = [

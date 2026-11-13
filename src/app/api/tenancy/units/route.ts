@@ -12,6 +12,7 @@ const unitSchema = z.object({
   unitType: z.string().trim().min(2).max(60),
   bedrooms: z.number().int().min(0).max(50),
   bathrooms: z.number().int().min(0).max(50).optional(),
+  toilets: z.number().int().min(0).max(50).optional(),
   occupancyStatus: z.enum(["available", "occupied", "maintenance"]).optional(),
   rentAmountCents: z.number().int().min(0).max(100_000_000),
   description: z.string().trim().max(1000).optional().nullable(),

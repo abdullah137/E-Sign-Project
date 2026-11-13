@@ -517,11 +517,14 @@ describe("editable records", () => {
       propertyId: property.id,
       actor,
       units: [
-        { unitNumber: "1", unitType: "Flat", bedrooms: 1, rentAmountCents: 120_000 },
+        { unitNumber: "1", unitType: "Flat", bedrooms: 1, bathrooms: 2, toilets: 1, rentAmountCents: 120_000 },
         { unitNumber: "2", unitType: "Flat", bedrooms: 2, rentAmountCents: 150_000 },
       ],
     });
     expect(units).toHaveLength(2);
+    expect(units[0].bathrooms).toBe(2);
+    expect(units[0].toilets).toBe(1);
+    expect(units[1].toilets).toBe(0);
     expect(listUnits(db, workspaceId, property.id)).toHaveLength(2);
     expect(() =>
       createUnitsBulk(db, {
@@ -539,10 +542,13 @@ describe("editable records", () => {
       unitNumber: "1A",
       unitType: "Studio",
       bedrooms: 1,
+      bathrooms: 1,
+      toilets: 3,
       occupancyStatus: "occupied",
       rentAmountCents: 130_000,
     });
     expect(updated.unit_number).toBe("1A");
+    expect(updated.toilets).toBe(3);
     expect(updated.occupancy_status).toBe("occupied");
 
     deleteUnit(db, { workspaceId, unitId: units[1].id, actor });

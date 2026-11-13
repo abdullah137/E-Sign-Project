@@ -135,6 +135,7 @@ export interface PropertyUnitRow {
   unit_type: string;
   bedrooms: number;
   bathrooms: number;
+  toilets: number;
   occupancy_status: UnitOccupancy;
   rent_amount_cents: number;
   description: string | null;
@@ -1243,23 +1244,43 @@ export interface UnitInput {
   unitType: string;
   bedrooms: number;
   bathrooms?: number;
+  toilets?: number;
   occupancyStatus?: UnitOccupancy;
   rentAmountCents: number;
   description?: string | null;
 }
 
-function unitValues(input: UnitInput): [string, string, number, number, UnitOccupancy, number, string | null] {
+function unitValues(input: UnitInput): {
+  unitNumber: string;
+  unitType: string;
+  bedrooms: number;
+  bathrooms: number;
+  toilets: number;
+  occupancy: UnitOccupancy;
+  rent: number;
+  description: string | null;
+} {
   const unitNumber = text(input.unitNumber, 40);
   const unitType = text(input.unitType, 60, "Standard");
   if (!unitNumber) throw new ValidationError("Add a unit name or number.");
   const bedrooms = Math.max(0, Math.min(50, Math.round(input.bedrooms || 0)));
   const bathrooms = Math.max(0, Math.min(50, Math.round(input.bathrooms ?? 1)));
+  const toilets = Math.max(0, Math.min(50, Math.round(input.toilets ?? 0)));
   const occupancy = (input.occupancyStatus ?? "available") as UnitOccupancy;
   if (!["available", "occupied", "maintenance"].includes(occupancy)) {
     throw new ValidationError("Choose a valid occupancy status.");
   }
   const rent = Math.max(0, Math.min(100_000_000, Math.round(input.rentAmountCents || 0)));
-  return [unitNumber, unitType, bedrooms, bathrooms, occupancy, rent, isoOrNull(input.description)];
+  return {
+    unitNumber,
+    unitType,
+    bedrooms,
+    bathrooms,
+    toilets,
+    occupancy,
+    rent,
+    description: isoOrNull(input.description),
+  };
 }
 
 function refreshUnitCount(db: DatabaseSync, propertyId: string): void {
@@ -1278,7 +1299,7 @@ export function createUnit(
 ): PropertyUnitRow {
   const property = getProperty(db, input.workspaceId, input.propertyId);
   if (!property) throw new NotFoundError("Property not found.");
-  const [unitNumber, unitType, bedrooms, bathrooms, occupancy, rent, description] = unitValues(input);
+  const { unitNumber, unitType, bedrooms, bathrooms, toilets, occupancy, rent, description } = unitValues(input);
   const duplicate = db
     .prepare("SELECT id FROM property_units WHERE property_id = ? AND unit_number = ?")
     .get(property.id, unitNumber);
@@ -1288,9 +1309,9 @@ export function createUnit(
   transaction(db, () => {
     db.prepare(
       `INSERT INTO property_units
-        (id, workspace_id, property_id, unit_number, unit_type, bedrooms, bathrooms, occupancy_status,
-         rent_amount_cents, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, workspace_id, property_id, unit_number, unit_type, bedrooms, bathrooms, toilets,
+         occupancy_status, rent_amount_cents, description, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.workspaceId,
@@ -1299,6 +1320,7 @@ export function createUnit(
       unitType,
       bedrooms,
       bathrooms,
+      toilets,
       occupancy,
       rent,
       description,
@@ -1350,21 +1372,22 @@ export function updateUnit(
 ): PropertyUnitRow {
   const current = getUnit(db, input.workspaceId, input.unitId);
   if (!current) throw new NotFoundError("Unit not found.");
-  const [unitNumber, unitType, bedrooms, bathrooms, occupancy, rent, description] = unitValues(input);
+  const { unitNumber, unitType, bedrooms, bathrooms, toilets, occupancy, rent, description } = unitValues(input);
   const duplicate = db
     .prepare("SELECT id FROM property_units WHERE property_id = ? AND unit_number = ? AND id != ?")
     .get(current.property_id, unitNumber, current.id);
   if (duplicate) throw new ConflictError("Another unit already uses this name or number.");
   const now = nowIso();
   db.prepare(
-    `UPDATE property_units SET unit_number = ?, unit_type = ?, bedrooms = ?, bathrooms = ?, occupancy_status = ?,
-       rent_amount_cents = ?, description = ?, updated_at = ?
+    `UPDATE property_units SET unit_number = ?, unit_type = ?, bedrooms = ?, bathrooms = ?, toilets = ?,
+       occupancy_status = ?, rent_amount_cents = ?, description = ?, updated_at = ?
      WHERE id = ? AND workspace_id = ?`,
   ).run(
     unitNumber,
     unitType,
     bedrooms,
     bathrooms,
+    toilets,
     occupancy,
     rent,
     description,
