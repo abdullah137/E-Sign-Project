@@ -437,6 +437,7 @@ describe("editable records", () => {
       addressLine1: "7B Cedar Court",
       city: "Austin",
       state: "TX",
+      description: "Quiet courtyard flat.",
       bedrooms: 2,
       rentAmountCents: 180_000,
     };
@@ -453,6 +454,37 @@ describe("editable records", () => {
     });
     expect(updated.listing_type).toBe("entire");
     expect(updated.bathrooms).toBe(2);
+
+    const preserved = updateProperty(db, {
+      workspaceId,
+      propertyId: property.id,
+      actor: { id: userId, label: "Dana Owner" },
+      landlordId: landlord.id,
+      name: "7B Cedar Court",
+      propertyType: "Flat",
+      addressLine1: "7B Cedar Court",
+      city: "Austin",
+      state: "TX",
+    });
+    expect(preserved.bedrooms).toBe(2);
+    expect(preserved.bathrooms).toBe(2);
+    expect(preserved.rent_amount_cents).toBe(180_000);
+    expect(preserved.description).toBe("Quiet courtyard flat.");
+
+    const bare = createProperty(db, {
+      workspaceId,
+      userId,
+      userLabel: "Dana Owner",
+      landlordId: landlord.id,
+      name: "Bare Property",
+      propertyType: "Flat",
+      addressLine1: "1 Bare Street",
+      city: "Austin",
+      state: "TX",
+    });
+    expect(bare.bedrooms).toBe(0);
+    expect(bare.bathrooms).toBe(0);
+    expect(bare.rent_amount_cents).toBe(0);
   });
 
   it("stores multiple property photos in order and removes them individually", () => {

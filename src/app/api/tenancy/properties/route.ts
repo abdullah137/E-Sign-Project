@@ -18,10 +18,10 @@ const schema = z.object({
   city: z.string().trim().min(1).max(80),
   state: z.string().trim().min(1).max(80),
   postalCode: z.string().trim().max(20).optional().nullable(),
-  bedrooms: z.number().int().min(0).max(50),
+  bedrooms: z.number().int().min(0).max(50).optional(),
   bathrooms: z.number().int().min(0).max(50).optional(),
   listingType: z.enum(["entire", "part"]).optional(),
-  rentAmountCents: z.number().int().min(0).max(100_000_000),
+  rentAmountCents: z.number().int().min(0).max(100_000_000).optional(),
   inquiryFeeCents: z.number().int().min(0).max(100_000_000).optional(),
   status: z.enum(["available", "occupied", "maintenance", "archived"]).optional(),
 });

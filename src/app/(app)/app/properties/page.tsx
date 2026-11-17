@@ -20,7 +20,7 @@ export default async function PropertiesPage() {
       <PageHeader
         overline="Property management"
         title="Properties"
-        description="Each property keeps its address, rent and landlord contact in one place. Send a tenant inquiry, then prepare the agreement from the approved inquiry."
+        description="Each property keeps its address, units and landlord contact in one place. Send a tenant inquiry, then prepare the agreement from the approved inquiry."
       />
       <div className="mt-8">
         <PropertiesPanel properties={properties} landlords={landlords} units={units} />

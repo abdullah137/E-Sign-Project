@@ -40,14 +40,10 @@ const EMPTY_PROPERTY_FORM = {
   category: "Residential",
   propertyType: "Apartment",
   listingType: "entire" as PropertyListingType,
-  description: "",
   addressLine1: "",
   city: "",
   state: "",
   postalCode: "",
-  bedrooms: "2",
-  bathrooms: "1",
-  rent: "",
   inquiryFee: "",
   unitCount: "0",
   status: "available" as PropertyStatus,
@@ -63,6 +59,14 @@ function unitLabelFor(category: string, propertyType: string): { label: string; 
 function unitNoun(category: string, propertyType: string, count: number): string {
   const { noun } = unitLabelFor(category, propertyType);
   return count === 1 ? noun : `${noun}s`;
+}
+
+function unitRange(values: number[]): string | null {
+  const present = values.filter((value) => value > 0);
+  if (present.length === 0) return null;
+  const min = Math.min(...present);
+  const max = Math.max(...present);
+  return min === max ? String(min) : `${min}–${max}`;
 }
 
 const EMPTY_UNIT_FORM = {
@@ -94,8 +98,8 @@ const LISTING_TYPE_LABELS: Record<PropertyListingType, string> = {
   part: "Part of building",
 };
 
-const MAX_PROPERTY_IMAGES = 12;
-const MAX_PROPERTY_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_UNIT_PHOTOS = 6;
+const MAX_UNIT_PHOTO_BYTES = 5 * 1024 * 1024;
 
 function propertyImageUrl(propertyId: string, image: PropertyImage, version: string): string {
   return `/api/tenancy/properties/${propertyId}/image?imageId=${encodeURIComponent(image.id)}&v=${encodeURIComponent(version)}`;
@@ -124,25 +128,7 @@ export function PropertiesPanel({
     propertyName: string;
     count: number;
   } | null>(null);
-  const [imageFiles, setImageFiles] = useState<Array<{ file: File; url: string }>>([]);
-  const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
   const [removingImage, setRemovingImage] = useState(false);
-  const imageFilesRef = useRef(imageFiles);
-  imageFilesRef.current = imageFiles;
-
-  useEffect(
-    () => () => {
-      for (const item of imageFilesRef.current) URL.revokeObjectURL(item.url);
-    },
-    [],
-  );
-
-  const clearImageFiles = () => {
-    setImageFiles((current) => {
-      for (const item of current) URL.revokeObjectURL(item.url);
-      return [];
-    });
-  };
 
   const unitsByProperty = useMemo(() => {
     const map = new Map<string, PropertyUnitListRow[]>();
@@ -161,8 +147,6 @@ export function PropertiesPanel({
   const startCreate = () => {
     setEditingProperty(null);
     setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
-    clearImageFiles();
-    setRemovedImageIds([]);
     setError(null);
     setPropertyOpen(true);
   };
@@ -176,20 +160,14 @@ export function PropertiesPanel({
       category: property.category,
       propertyType: property.property_type,
       listingType: property.listing_type,
-      description: property.description ?? "",
       addressLine1: property.address_line1,
       city: property.city,
       state: property.state,
       postalCode: property.postal_code ?? "",
-      bedrooms: String(property.bedrooms),
-      bathrooms: String(property.bathrooms),
-      rent: (property.rent_amount_cents / 100).toString(),
       inquiryFee: property.inquiry_fee_cents > 0 ? (property.inquiry_fee_cents / 100).toString() : "",
       unitCount: "0",
       status: property.status,
     });
-    clearImageFiles();
-    setRemovedImageIds([]);
     setError(null);
     setPropertyOpen(true);
   };
@@ -197,65 +175,7 @@ export function PropertiesPanel({
   const closePropertyModal = () => {
     setPropertyOpen(false);
     setEditingProperty(null);
-    clearImageFiles();
-    setRemovedImageIds([]);
     setError(null);
-  };
-
-  const pickImages = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setError(null);
-    const existingCount = (editingProperty?.images ?? []).filter(
-      (image) => !removedImageIds.includes(image.id),
-    ).length;
-    const room = MAX_PROPERTY_IMAGES - existingCount - imageFiles.length;
-    if (room <= 0) {
-      setError(`A property can have up to ${MAX_PROPERTY_IMAGES} photos.`);
-      return;
-    }
-    const accepted: Array<{ file: File; url: string }> = [];
-    for (const file of Array.from(files).slice(0, room)) {
-      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-        setError("Upload PNG, JPEG or WebP images only.");
-        continue;
-      }
-      if (file.size > MAX_PROPERTY_IMAGE_BYTES) {
-        setError("Each image must be 5 MB or smaller.");
-        continue;
-      }
-      accepted.push({ file, url: URL.createObjectURL(file) });
-    }
-    if (accepted.length) setImageFiles((current) => [...current, ...accepted]);
-  };
-
-  const removePendingImage = (index: number) => {
-    setImageFiles((current) => {
-      const target = current[index];
-      if (target) URL.revokeObjectURL(target.url);
-      return current.filter((_, itemIndex) => itemIndex !== index);
-    });
-  };
-
-  const toggleExistingImage = (imageId: string) => {
-    setRemovedImageIds((current) =>
-      current.includes(imageId)
-        ? current.filter((id) => id !== imageId)
-        : [...current, imageId],
-    );
-  };
-
-  const syncImages = async (propertyId: string) => {
-    for (const imageId of removedImageIds) {
-      await apiFetch(
-        `/api/tenancy/properties/${propertyId}/image?imageId=${encodeURIComponent(imageId)}`,
-        { method: "DELETE" },
-      );
-    }
-    if (imageFiles.length > 0) {
-      const body = new FormData();
-      for (const item of imageFiles) body.append("images", item.file);
-      await apiFetch(`/api/tenancy/properties/${propertyId}/image`, { method: "POST", body });
-    }
   };
 
   const removeImages = async (property: PropertyListRow) => {
@@ -279,13 +199,7 @@ export function PropertiesPanel({
     event.preventDefault();
     setSaving(true);
     setError(null);
-    const rentAmount = Number(form.rent);
     const inquiryFee = Number(form.inquiryFee);
-    if (!Number.isInteger(rentAmount) || rentAmount < 0) {
-      setError("Enter the yearly rent as a whole number.");
-      setSaving(false);
-      return;
-    }
     if (form.inquiryFee !== "" && (!Number.isInteger(inquiryFee) || inquiryFee < 0)) {
       setError("Enter the inquiry fee as a whole number.");
       setSaving(false);
@@ -299,14 +213,10 @@ export function PropertiesPanel({
       category: form.category,
       propertyType: form.propertyType,
       listingType: form.listingType,
-      description: form.description || null,
       addressLine1: form.addressLine1,
       city: form.city,
       state: form.state,
       postalCode: form.postalCode || null,
-      bedrooms: Number(form.bedrooms || 0),
-      bathrooms: Number(form.bathrooms || 0),
-      rentAmountCents: Number.isFinite(rentAmount) ? Math.round(rentAmount * 100) : 0,
       inquiryFeeCents:
         Number.isFinite(inquiryFee) && inquiryFee > 0 ? Math.round(inquiryFee * 100) : 0,
       status: form.status,
@@ -317,46 +227,20 @@ export function PropertiesPanel({
           method: "PATCH",
           body: JSON.stringify(payload),
         });
-        try {
-          await syncImages(editingProperty.id);
-        } catch (imageError) {
-          toast({
-            title: "Photos not saved",
-            description:
-              imageError instanceof ApiClientError
-                ? `The property was saved. ${imageError.message}`
-                : "The property was saved, but the photos could not be updated.",
-          });
-        }
         toast({ title: "Property updated", description: `${form.name} has been saved.` });
         setPropertyOpen(false);
         setEditingProperty(null);
-        clearImageFiles();
-        setRemovedImageIds([]);
         router.refresh();
       } else {
         const result = await apiFetch<{ property: { id: string; name: string } }>("/api/tenancy/properties", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        try {
-          await syncImages(result.property.id);
-        } catch (imageError) {
-          toast({
-            title: "Photos not saved",
-            description:
-              imageError instanceof ApiClientError
-                ? `The property was added. ${imageError.message}`
-                : "The property was added, but the photos could not be uploaded.",
-          });
-        }
         if (unitTotal > 0) {
           const propertyId = result.property.id;
           const propertyName = result.property.name;
           setPropertyOpen(false);
           setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
-          clearImageFiles();
-          setRemovedImageIds([]);
           setUnitWizard({ propertyId, propertyName, count: unitTotal });
           router.refresh();
           return;
@@ -367,8 +251,6 @@ export function PropertiesPanel({
         });
         setPropertyOpen(false);
         setForm({ ...EMPTY_PROPERTY_FORM, landlordId: landlords[0]?.id ?? "" });
-        clearImageFiles();
-        setRemovedImageIds([]);
         router.refresh();
       }
     } catch (err) {
@@ -396,10 +278,6 @@ export function PropertiesPanel({
       setDeleting(null);
     }
   };
-
-  const visibleImages = (editingProperty?.images ?? []).filter(
-    (image) => !removedImageIds.includes(image.id),
-  );
 
   return (
     <div className="space-y-6">
@@ -441,6 +319,19 @@ export function PropertiesPanel({
         <div className="grid gap-4 md:grid-cols-2">
           {properties.map((property) => {
             const propertyUnits = unitsByProperty.get(property.id) ?? [];
+            const unitRents = propertyUnits
+              .map((unit) => unit.rent_amount_cents)
+              .filter((rent) => rent > 0);
+            const rentFromUnits =
+              property.rent_amount_cents === 0 && unitRents.length > 0 ? Math.min(...unitRents) : null;
+            const bedroomsLabel =
+              property.bedrooms > 0
+                ? String(property.bedrooms)
+                : unitRange(propertyUnits.map((unit) => unit.bedrooms));
+            const bathroomsLabel =
+              property.bathrooms > 0
+                ? String(property.bathrooms)
+                : unitRange(propertyUnits.map((unit) => unit.bathrooms));
             return (
               <article key={property.id} className="flex flex-col rounded-card border border-hairline bg-card p-5">
                 {property.images.length > 0 ? (
@@ -494,8 +385,20 @@ export function PropertiesPanel({
                   <div>
                     <dt className="text-slate">Rent</dt>
                     <dd className="mt-0.5 font-semibold text-ink">
-                      {formatMoney(property.rent_amount_cents)}
-                      <span className="font-normal text-slate"> / year</span>
+                      {property.rent_amount_cents > 0 ? (
+                        <>
+                          {formatMoney(property.rent_amount_cents)}
+                          <span className="font-normal text-slate"> / year</span>
+                        </>
+                      ) : rentFromUnits !== null ? (
+                        <>
+                          <span className="font-normal text-slate">From </span>
+                          {formatMoney(rentFromUnits)}
+                          <span className="font-normal text-slate"> / year</span>
+                        </>
+                      ) : (
+                        <span className="font-normal text-slate">—</span>
+                      )}
                     </dd>
                   </div>
                   <div>
@@ -504,11 +407,11 @@ export function PropertiesPanel({
                   </div>
                   <div>
                     <dt className="text-slate">Bedrooms</dt>
-                    <dd className="mt-0.5 font-semibold text-ink">{property.bedrooms}</dd>
+                    <dd className="mt-0.5 font-semibold text-ink">{bedroomsLabel ?? "—"}</dd>
                   </div>
                   <div>
                     <dt className="text-slate">Bathrooms</dt>
-                    <dd className="mt-0.5 font-semibold text-ink">{property.bathrooms}</dd>
+                    <dd className="mt-0.5 font-semibold text-ink">{bathroomsLabel ?? "—"}</dd>
                   </div>
                   <div>
                     <dt className="text-slate">Landlord</dt>
@@ -572,7 +475,7 @@ export function PropertiesPanel({
         open={propertyOpen}
         onClose={closePropertyModal}
         title={editingProperty ? "Edit property" : "Add property"}
-        description="A unique reference is generated automatically. The rent and address are prefilled into agreements prepared from this property."
+        description="A unique reference is generated automatically. Units keep their own bedrooms, bathrooms, rent and description. The address is prefilled into agreements prepared from this property."
         size="lg"
         footer={
           <div className="flex justify-end gap-2">
@@ -683,53 +586,11 @@ export function PropertiesPanel({
               <option value="archived">Archived</option>
             </Select>
           </FormField>
-          <FormField label="Bedrooms" htmlFor="property-bedrooms">
-            <Input
-              id="property-bedrooms"
-              type="number"
-              min={0}
-              max={50}
-              step={1}
-              inputMode="numeric"
-              value={form.bedrooms}
-              onChange={update("bedrooms")}
-            />
-          </FormField>
-          <FormField label="Bathrooms" htmlFor="property-bathrooms">
-            <Input
-              id="property-bathrooms"
-              type="number"
-              min={0}
-              max={50}
-              step={1}
-              inputMode="numeric"
-              value={form.bathrooms}
-              onChange={update("bathrooms")}
-            />
-          </FormField>
-          <FormField
-            label="Yearly rent"
-            htmlFor="property-rent"
-            required
-            className="sm:col-span-2"
-            hint="Enter the amount in your local currency. Whole numbers only."
-          >
-            <Input
-              id="property-rent"
-              type="number"
-              min={0}
-              step={1}
-              inputMode="numeric"
-              value={form.rent}
-              onChange={update("rent")}
-              required
-            />
-          </FormField>
           {!editingProperty ? (
             <FormField
               label={unitLabelFor(form.category, form.propertyType).label}
               htmlFor="property-units"
-              hint={`You will fill in each ${unitNoun(form.category, form.propertyType, 1)} one by one. Leave 0 for a single let property.`}
+              hint={`You will fill in each ${unitNoun(form.category, form.propertyType, 1)} one by one in the next step. Enter 0 if the property has no separate units.`}
               className="sm:col-span-2"
             >
               <Input
@@ -744,95 +605,6 @@ export function PropertiesPanel({
               />
             </FormField>
           ) : null}
-          <FormField label="Description" htmlFor="property-description" className="sm:col-span-2">
-            <Textarea
-              id="property-description"
-              value={form.description}
-              onChange={update("description")}
-              maxLength={1000}
-            />
-          </FormField>
-          <FormField
-            label="Property photos"
-            htmlFor="property-image"
-            className="sm:col-span-2"
-            hint={`Optional. Add up to ${MAX_PROPERTY_IMAGES} photos.`}
-          >
-            <div className="rounded-xl border border-dashed border-hairline-strong bg-surface-subtle p-4">
-              {visibleImages.length > 0 || imageFiles.length > 0 ? (
-                <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {visibleImages.map((image) => (
-                    <div key={image.id} className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={propertyImageUrl(editingProperty!.id, image, editingProperty!.updated_at)}
-                        alt={image.original_filename ?? "Property photo"}
-                        className="h-24 w-full rounded-lg border border-hairline object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => toggleExistingImage(image.id)}
-                        aria-label="Remove photo"
-                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-white hover:bg-ink"
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  ))}
-                  {imageFiles.map((item, index) => (
-                    <div key={item.url} className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={item.url}
-                        alt={item.file.name}
-                        className="h-24 w-full rounded-lg border border-hairline object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePendingImage(index)}
-                        aria-label="Remove selected photo"
-                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-white hover:bg-ink"
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mb-4 flex h-24 items-center justify-center rounded-lg border border-dashed border-hairline-strong text-[12px] text-slate">
-                  No photos selected
-                </div>
-              )}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[12px] text-slate">
-                    PNG, JPEG or WebP up to 5 MB each. Stored privately for this workspace.
-                  </p>
-                  {removedImageIds.length > 0 ? (
-                    <p className="mt-1 text-[11.5px] text-danger">
-                      {removedImageIds.length} photo{removedImageIds.length === 1 ? "" : "s"} will be
-                      removed when you save.
-                    </p>
-                  ) : null}
-                </div>
-                <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-hairline bg-card px-3 py-1.5 text-[12px] font-medium text-ink hover:border-brand-500">
-                  <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-                  {imageFiles.length > 0 || visibleImages.length > 0 ? "Add more photos" : "Browse photos"}
-                  <input
-                    id="property-image"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    multiple
-                    className="sr-only"
-                    onChange={(event) => {
-                      pickImages(event.target.files);
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          </FormField>
           {error ? (
             <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger sm:col-span-2">
               {error}
@@ -876,47 +648,11 @@ function UnitFields({
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <FormField label="Unit name or number" htmlFor={`${idPrefix}-number`} required>
+      <FormField label="Unit name or number" htmlFor={`${idPrefix}-number`} required className="sm:col-span-2">
         <Input id={`${idPrefix}-number`} value={form.unitNumber} onChange={update("unitNumber")} required />
       </FormField>
       <FormField label="Unit type" htmlFor={`${idPrefix}-type`} required>
         <Input id={`${idPrefix}-type`} value={form.unitType} onChange={update("unitType")} required />
-      </FormField>
-      <FormField label="Bedrooms" htmlFor={`${idPrefix}-bedrooms`}>
-        <Input
-          id={`${idPrefix}-bedrooms`}
-          type="number"
-          min={0}
-          max={50}
-          step={1}
-          inputMode="numeric"
-          value={form.bedrooms}
-          onChange={update("bedrooms")}
-        />
-      </FormField>
-      <FormField label="Bathrooms" htmlFor={`${idPrefix}-bathrooms`}>
-        <Input
-          id={`${idPrefix}-bathrooms`}
-          type="number"
-          min={0}
-          max={50}
-          step={1}
-          inputMode="numeric"
-          value={form.bathrooms}
-          onChange={update("bathrooms")}
-        />
-      </FormField>
-      <FormField label="Toilets" htmlFor={`${idPrefix}-toilets`}>
-        <Input
-          id={`${idPrefix}-toilets`}
-          type="number"
-          min={0}
-          max={50}
-          step={1}
-          inputMode="numeric"
-          value={form.toilets}
-          onChange={update("toilets")}
-        />
       </FormField>
       <FormField label="Occupancy" htmlFor={`${idPrefix}-occupancy`}>
         <Select id={`${idPrefix}-occupancy`} value={form.occupancyStatus} onChange={update("occupancyStatus")}>
@@ -925,7 +661,50 @@ function UnitFields({
           <option value="maintenance">Maintenance</option>
         </Select>
       </FormField>
-      <FormField label="Yearly rent" htmlFor={`${idPrefix}-rent`}>
+      <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
+        <FormField label="Bedrooms" htmlFor={`${idPrefix}-bedrooms`}>
+          <Input
+            id={`${idPrefix}-bedrooms`}
+            type="number"
+            min={0}
+            max={50}
+            step={1}
+            inputMode="numeric"
+            value={form.bedrooms}
+            onChange={update("bedrooms")}
+          />
+        </FormField>
+        <FormField label="Bathrooms" htmlFor={`${idPrefix}-bathrooms`}>
+          <Input
+            id={`${idPrefix}-bathrooms`}
+            type="number"
+            min={0}
+            max={50}
+            step={1}
+            inputMode="numeric"
+            value={form.bathrooms}
+            onChange={update("bathrooms")}
+          />
+        </FormField>
+        <FormField label="Toilets" htmlFor={`${idPrefix}-toilets`}>
+          <Input
+            id={`${idPrefix}-toilets`}
+            type="number"
+            min={0}
+            max={50}
+            step={1}
+            inputMode="numeric"
+            value={form.toilets}
+            onChange={update("toilets")}
+          />
+        </FormField>
+      </div>
+      <FormField
+        label="Yearly rent (₦)"
+        htmlFor={`${idPrefix}-rent`}
+        hint="Whole naira amount per year."
+        className="sm:col-span-2"
+      >
         <Input
           id={`${idPrefix}-rent`}
           type="number"
@@ -1170,14 +949,35 @@ function UnitSetupWizard({
   const [index, setIndex] = useState(0);
   const [done, setDone] = useState(0);
   const [form, setForm] = useState(EMPTY_UNIT_FORM);
+  const [photos, setPhotos] = useState<Array<{ file: File; url: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+
+  useEffect(
+    () => () => {
+      for (const item of photosRef.current) URL.revokeObjectURL(item.url);
+    },
+    [],
+  );
+
+  const clearPhotos = () => {
+    setPhotos((current) => {
+      for (const item of current) URL.revokeObjectURL(item.url);
+      return [];
+    });
+  };
 
   useEffect(() => {
     if (wizard) {
       setIndex(0);
       setDone(0);
-      setForm({ ...EMPTY_UNIT_FORM, unitNumber: "1" });
+      setForm({ ...EMPTY_UNIT_FORM, unitNumber: wizard.count > 1 ? "Flat-1" : "1" });
+      setPhotos((current) => {
+        for (const item of current) URL.revokeObjectURL(item.url);
+        return [];
+      });
       setError(null);
     }
   }, [wizard]);
@@ -1185,6 +985,37 @@ function UnitSetupWizard({
   const update = (field: keyof typeof form) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => setForm((current) => ({ ...current, [field]: event.target.value }));
+
+  const pickPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setError(null);
+    const room = MAX_UNIT_PHOTOS - photos.length;
+    if (room <= 0) {
+      setError(`A unit can have up to ${MAX_UNIT_PHOTOS} photos.`);
+      return;
+    }
+    const accepted: Array<{ file: File; url: string }> = [];
+    for (const file of Array.from(files).slice(0, room)) {
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        setError("Upload PNG, JPEG or WebP images only.");
+        continue;
+      }
+      if (file.size > MAX_UNIT_PHOTO_BYTES) {
+        setError("Each image must be 5 MB or smaller.");
+        continue;
+      }
+      accepted.push({ file, url: URL.createObjectURL(file) });
+    }
+    if (accepted.length) setPhotos((current) => [...current, ...accepted]);
+  };
+
+  const removePhoto = (photoIndex: number) => {
+    setPhotos((current) => {
+      const target = current[photoIndex];
+      if (target) URL.revokeObjectURL(target.url);
+      return current.filter((_, itemIndex) => itemIndex !== photoIndex);
+    });
+  };
 
   const submitStep = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1201,7 +1032,7 @@ function UnitSetupWizard({
     setSaving(true);
     setError(null);
     try {
-      await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
+      const created = await apiFetch<{ unit: { id: string } }>("/api/tenancy/units", {
         method: "POST",
         body: JSON.stringify({
           propertyId: wizard.propertyId,
@@ -1215,6 +1046,23 @@ function UnitSetupWizard({
           description: form.description || null,
         }),
       });
+      let failedPhotos = 0;
+      for (const item of photos) {
+        const body = new FormData();
+        body.set("file", item.file);
+        try {
+          await apiFetch(`/api/tenancy/units/${created.unit.id}/files`, { method: "POST", body });
+        } catch {
+          failedPhotos += 1;
+        }
+      }
+      if (failedPhotos > 0) {
+        toast({
+          title: "Photos not saved",
+          description: `${failedPhotos} of ${photos.length} photo${photos.length === 1 ? "" : "s"} could not be uploaded. The unit itself was saved.`,
+        });
+      }
+      clearPhotos();
       const nextDone = done + 1;
       setDone(nextDone);
       if (nextDone >= wizard.count) {
@@ -1224,7 +1072,10 @@ function UnitSetupWizard({
         });
         onFinished();
       } else {
-        setForm({ ...EMPTY_UNIT_FORM, unitNumber: String(nextDone + 1) });
+        setForm({
+          ...EMPTY_UNIT_FORM,
+          unitNumber: wizard.count > 1 ? `Flat-${nextDone + 1}` : String(nextDone + 1),
+        });
         setIndex(nextDone);
       }
     } catch (err) {
@@ -1272,6 +1123,53 @@ function UnitSetupWizard({
       ) : null}
       <form id="unit-wizard-form" onSubmit={submitStep} className="space-y-4">
         <UnitFields form={form} update={update} idPrefix="wizard" />
+        <FormField
+          label="Photos for this unit"
+          htmlFor="wizard-photos"
+          hint={`Optional. Add up to ${MAX_UNIT_PHOTOS} photos. PNG, JPEG or WebP up to 5 MB each.`}
+        >
+          <div className="rounded-xl border border-dashed border-hairline-strong bg-surface-subtle p-4">
+            {photos.length > 0 ? (
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                {photos.map((item, photoIndex) => (
+                  <div key={item.url} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.url}
+                      alt={item.file.name}
+                      className="h-20 w-full rounded-lg border border-hairline object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(photoIndex)}
+                      aria-label="Remove photo"
+                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-white hover:bg-ink"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mb-3 text-[12px] text-slate">No photos selected</p>
+            )}
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-hairline bg-card px-3 py-1.5 text-[12px] font-medium text-ink hover:border-brand-500">
+              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+              {photos.length > 0 ? "Add more photos" : "Browse photos"}
+              <input
+                id="wizard-photos"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  pickPhotos(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        </FormField>
         {error ? (
           <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger">
             {error}

@@ -792,10 +792,10 @@ export interface PropertyInput {
   city: string;
   state: string;
   postalCode?: string | null;
-  bedrooms: number;
+  bedrooms?: number;
   bathrooms?: number;
   listingType?: PropertyListingType;
-  rentAmountCents: number;
+  rentAmountCents?: number;
   inquiryFeeCents?: number;
   status?: PropertyStatus;
 }
@@ -838,7 +838,7 @@ export function createProperty(
   if (!city || !state) throw new ValidationError("Add the city and state.");
   const reference = (text(input.reference, 40) || propertyReference(db, input.workspaceId, name)).toUpperCase();
   const bedrooms = Math.max(0, Math.min(50, Math.round(input.bedrooms || 0)));
-  const bathrooms = Math.max(0, Math.min(50, Math.round(input.bathrooms ?? 1)));
+  const bathrooms = Math.max(0, Math.min(50, Math.round(input.bathrooms || 0)));
   const listingType = input.listingType ?? "entire";
   if (!PROPERTY_LISTING_TYPES.includes(listingType)) {
     throw new ValidationError("Choose whether the listing is the entire property or part of a building.");
@@ -927,7 +927,10 @@ export function updateProperty(
     .prepare("SELECT id FROM properties WHERE workspace_id = ? AND reference = ? AND id != ?")
     .get(input.workspaceId, reference, current.id);
   if (duplicate) throw new ConflictError("Another property already uses this reference.");
-  const bedrooms = Math.max(0, Math.min(50, Math.round(input.bedrooms || 0)));
+  const bedrooms = Math.max(
+    0,
+    Math.min(50, Math.round(input.bedrooms === undefined ? current.bedrooms : input.bedrooms || 0)),
+  );
   const bathrooms = Math.max(
     0,
     Math.min(50, Math.round(input.bathrooms === undefined ? current.bathrooms : input.bathrooms || 0)),
@@ -936,7 +939,13 @@ export function updateProperty(
   if (!PROPERTY_LISTING_TYPES.includes(listingType)) {
     throw new ValidationError("Choose whether the listing is the entire property or part of a building.");
   }
-  const rent = Math.max(0, Math.min(100_000_000, Math.round(input.rentAmountCents || 0)));
+  const rent = Math.max(
+    0,
+    Math.min(
+      100_000_000,
+      Math.round(input.rentAmountCents === undefined ? current.rent_amount_cents : input.rentAmountCents || 0),
+    ),
+  );
   const inquiryFee = Math.max(
     0,
     Math.min(
@@ -962,7 +971,7 @@ export function updateProperty(
       name,
       category,
       propertyType,
-      isoOrNull(input.description),
+      input.description === undefined ? current.description : isoOrNull(input.description),
       addressLine1,
       city,
       state,
