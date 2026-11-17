@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { env } from "./env";
@@ -753,9 +754,27 @@ export function createDatabase(filePath: string): DatabaseSync {
   return db;
 }
 
+let dataDirWarned = false;
+
+function warnAboutEphemeralDataDir(): void {
+  if (dataDirWarned || !env.isProduction) return;
+  dataDirWarned = true;
+  const configured =
+    Boolean(process.env.SIGNFLOW_DATA_DIR?.trim()) ||
+    Boolean(process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim());
+  const inAppDir = !configured && env.dataDir.startsWith(process.cwd() + path.sep);
+  const inTempDir = env.dataDir.startsWith(os.tmpdir());
+  if (!inAppDir && !inTempDir) return;
+  console.warn(
+    `[juripass] Data is stored at ${env.dataDir}, which is not preserved when this service restarts or redeploys. ` +
+      "Attach a persistent disk or volume and set SIGNFLOW_DATA_DIR to a directory on it (for example /var/data/juripass).",
+  );
+}
+
 export function getDb(): DatabaseSync {
   const dbPath = path.join(env.dataDir, "signflow.db");
   if (!globalForDb.__signflowDb || globalForDb.__signflowDbPath !== dbPath) {
+    warnAboutEphemeralDataDir();
     globalForDb.__signflowDb = createDatabase(dbPath);
     globalForDb.__signflowDbPath = dbPath;
   }

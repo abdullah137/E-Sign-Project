@@ -113,6 +113,17 @@ This build is a single **Next.js 15 App Router** application. The requested targ
 
 The database schema is created and migrated idempotently on first connection (`src/lib/db.ts`). Data and private files live under `data/` by default and can be moved with `SIGNFLOW_DATA_DIR` (the variable name is retained for compatibility).
 
+### Persisting data in production
+
+The SQLite database (`signflow.db`) and uploads (`storage/`) live in `env.dataDir`. On Render, Railway, Fly.io, Docker and most other hosts the application directory is rebuilt on every deploy, so anything stored inside it is deleted on restart. A persistent disk or volume mounted outside the build directory is required, and `SIGNFLOW_DATA_DIR` must point at it:
+
+- **Render**: add a Disk to the service (for example mounted at `/var/data`), then set `SIGNFLOW_DATA_DIR=/var/data/juripass`. Render disks require a paid instance and only one instance may mount them.
+- **Railway**: add a Volume to the service. When `SIGNFLOW_DATA_DIR` is unset, the app automatically uses `${RAILWAY_VOLUME_MOUNT_PATH}/juripass`; setting `SIGNFLOW_DATA_DIR` explicitly is still recommended.
+- **Fly.io**: create a volume (`fly volumes create juripass_data --size 1`), mount it at `/data` in `fly.toml`, and set `SIGNFLOW_DATA_DIR=/data/juripass`. Run a single machine, since SQLite is not shared between instances.
+- **Netlify / Vercel / Lambda**: the filesystem is temporary for every invocation. SQLite cannot persist there; run the app on a server or volume-backed platform, or replace the database with a hosted service.
+
+In production, when the resolved directory is inside the application folder or the OS temp directory, the server logs a warning naming the path and the fix. Back up the mounted directory (or use `sqlite3 signflow.db ".backup backup.db"`) before maintenance.
+
 ## Security model
 
 - Passwords are hashed with scrypt; session, inquiry, landlord and signing tokens are random and stored only as hashes.

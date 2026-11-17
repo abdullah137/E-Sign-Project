@@ -1,13 +1,20 @@
 import os from "node:os";
 import path from "node:path";
 
+function resolveDataDir(): string {
+  const configured = process.env.SIGNFLOW_DATA_DIR?.trim();
+  if (configured) return path.resolve(configured);
+  const railwayVolume = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  if (railwayVolume) return path.join(railwayVolume, "juripass");
+  if (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), "juripass");
+  }
+  return path.join(process.cwd(), "data");
+}
+
 export const env = {
   appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
-  dataDir:
-  process.env.SIGNFLOW_DATA_DIR ||
-  (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
-    ? path.join(os.tmpdir(), "juripass")
-    : path.join(process.cwd(), "data")),
+  dataDir: resolveDataDir(),
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
   signingLinkTtlDays: Number(process.env.SIGNING_LINK_TTL_DAYS || 14),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 5),
