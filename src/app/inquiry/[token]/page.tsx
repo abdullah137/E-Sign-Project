@@ -82,7 +82,7 @@ export default async function TenantInquiryPage({ params }: { params: Promise<{ 
             initialUnitId={inquiry.unit_id}
             applicantName={inquiry.applicant_name}
             applicantEmail={inquiry.applicant_email}
-            applicantPhone={inquiry.applicant_phone}
+            applicantPhone={inquiry.applicant_phone === "-" ? "" : inquiry.applicant_phone}
             expiresAtLabel={
               inquiry.tenant_token_expires_at ? formatDate(inquiry.tenant_token_expires_at) : null
             }

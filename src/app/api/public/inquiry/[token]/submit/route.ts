@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 
 const submissionSchema = z.object({
   unitId: z.string().trim().max(80).optional().nullable(),
+  applicantPhone: z.string().trim().max(40).optional().nullable(),
   currentAddress: z.string().trim().min(5, "Enter your current address.").max(400),
   currentCity: z.string().trim().max(120).optional().nullable(),
   currentState: z.string().trim().max(120).optional().nullable(),

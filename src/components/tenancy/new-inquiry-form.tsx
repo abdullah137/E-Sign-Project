@@ -60,6 +60,20 @@ export function NewInquiryForm({
       setError("Enter a whole-number inquiry fee between ₦0 and ₦1,000,000.");
       return;
     }
+    if (!form.propertyId) {
+      setError("Choose the property for this inquiry.");
+      return;
+    }
+    const applicantName = form.applicantName.trim();
+    const applicantEmail = form.applicantEmail.trim();
+    if (applicantName.length < 2) {
+      setError("Enter the tenant's full name.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(applicantEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -70,10 +84,9 @@ export function NewInquiryForm({
           body: JSON.stringify({
             propertyId: form.propertyId,
             unitId: form.unitId || null,
-            applicantName: form.applicantName,
-            applicantEmail: form.applicantEmail,
-            applicantPhone: "-",
-            lawyerNote: form.lawyerNote || null,
+            applicantName,
+            applicantEmail,
+            lawyerNote: form.lawyerNote.trim() || null,
             inquiryFeeCents: feeNaira * 100,
           }),
         },

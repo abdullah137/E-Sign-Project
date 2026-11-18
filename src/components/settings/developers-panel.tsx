@@ -39,12 +39,16 @@ export function DevelopersPanel({
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (label.trim().length < 2) {
+      setError("Enter a label for the key.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const result = await apiFetch<{ key: string; prefix: string }>(
         "/api/workspace/api-keys",
-        { method: "POST", body: JSON.stringify({ label }) },
+        { method: "POST", body: JSON.stringify({ label: label.trim() }) },
       );
       setCreating(false);
       setLabel("");

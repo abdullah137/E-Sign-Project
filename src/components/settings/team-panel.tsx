@@ -67,6 +67,10 @@ export function TeamPanel({
   const [roleSaving, setRoleSaving] = useState<string | null>(null);
 
   const sendInvite = async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim())) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
     setInviteSaving(true);
     setInviteError(null);
     try {

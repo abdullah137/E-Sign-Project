@@ -67,12 +67,24 @@ export function LandlordsPanel({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (form.name.trim().length < 2) {
+      setError("Enter the landlord's full name.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (form.phone.trim().length < 5) {
+      setError("Enter a valid phone number.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = {
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
       notes: editing?.notes ?? null,
       idType: editing?.id_type ?? null,
       idNumber: editing?.id_number ?? null,
@@ -223,13 +235,33 @@ export function LandlordsPanel({
       >
         <form id="landlord-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           <FormField label="Full name" htmlFor="landlord-name" required className="sm:col-span-2">
-            <Input id="landlord-name" value={form.name} onChange={update("name")} required data-autofocus />
+            <Input
+              id="landlord-name"
+              value={form.name}
+              onChange={update("name")}
+              maxLength={120}
+              required
+              data-autofocus
+            />
           </FormField>
           <FormField label="Email" htmlFor="landlord-email" required>
-            <Input id="landlord-email" type="email" value={form.email} onChange={update("email")} required />
+            <Input
+              id="landlord-email"
+              type="email"
+              value={form.email}
+              onChange={update("email")}
+              maxLength={254}
+              required
+            />
           </FormField>
           <FormField label="Phone" htmlFor="landlord-phone" required>
-            <Input id="landlord-phone" value={form.phone} onChange={update("phone")} required />
+            <Input
+              id="landlord-phone"
+              value={form.phone}
+              onChange={update("phone")}
+              maxLength={40}
+              required
+            />
           </FormField>
           {error ? (
             <p role="alert" className="rounded-lg border border-danger/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger sm:col-span-2">

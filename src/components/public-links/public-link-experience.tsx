@@ -41,17 +41,25 @@ export function PublicLinkExperience({
 
   const requestCode = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSending(true);
     setError(null);
     setNotice(null);
+    if (name.trim().length < 2) {
+      setError("Enter your full name.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    setSending(true);
     try {
       await apiFetch(`/api/public/${encodeURIComponent(token)}/request`, {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim() }),
       });
       setStep("code");
       setCode("");
-      setNotice(`A six-digit code is on its way to ${email}.`);
+      setNotice(`A six-digit code is on its way to ${email.trim()}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "The code could not be sent.");
     } finally {
@@ -65,7 +73,7 @@ export function PublicLinkExperience({
     try {
       await apiFetch(`/api/public/${encodeURIComponent(token)}/request`, {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim() }),
       });
       setNotice("A new code was sent. The previous code no longer works.");
     } catch (err) {
@@ -77,14 +85,26 @@ export function PublicLinkExperience({
 
   const verify = async (event: React.FormEvent) => {
     event.preventDefault();
-    setVerifying(true);
     setError(null);
+    if (name.trim().length < 2) {
+      setError("Enter your full name.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter the six-digit code from your email.");
+      return;
+    }
+    setVerifying(true);
     try {
       const result = await apiFetch<{ signingUrl: string }>(
         `/api/public/${encodeURIComponent(token)}/verify`,
         {
           method: "POST",
-          body: JSON.stringify({ name, email, code }),
+          body: JSON.stringify({ name: name.trim(), email: email.trim(), code }),
         },
       );
       setSigningUrl(result.signingUrl);

@@ -80,15 +80,25 @@ export function BrandingForm({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSaving(true);
     setError(null);
+    const trimmedName = name.trim();
+    const trimmedColor = color.trim();
+    if (trimmedName.length < 2) {
+      setError("Enter a workspace name.");
+      return;
+    }
+    if (trimmedColor && !/^#[0-9a-fA-F]{6}$/.test(trimmedColor)) {
+      setError("Choose a six-digit hex colour, for example #2563EB.");
+      return;
+    }
+    setSaving(true);
     try {
       await apiFetch("/api/workspace/branding", {
         method: "PATCH",
         body: JSON.stringify({
-          name,
+          name: trimmedName,
           brandDisplayName: display.trim() || null,
-          brandColor: color.trim() || null,
+          brandColor: trimmedColor || null,
         }),
       });
       toast({ title: "Branding updated", variant: "success" });

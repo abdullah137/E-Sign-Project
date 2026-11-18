@@ -71,7 +71,15 @@ export function TemplatesPanel({
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!documentId) return;
+    if (!documentId) {
+      setError("Choose a prepared document to turn into a template.");
+      return;
+    }
+    const finalName = (name.trim() || selectedCandidate?.title || "Untitled template").trim();
+    if (finalName.length < 2) {
+      setError("Enter a name for the template.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -79,7 +87,7 @@ export function TemplatesPanel({
         method: "POST",
         body: JSON.stringify({
           documentId,
-          name: name.trim() || selectedCandidate?.title || "Untitled template",
+          name: finalName,
           description: description.trim() || null,
         }),
       });
@@ -107,12 +115,26 @@ export function TemplatesPanel({
   const useTemplate = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!using) return;
+    const prepared = recipients.map((recipient) => ({
+      name: recipient.name.trim(),
+      email: recipient.email.trim(),
+    }));
+    if (!prepared.length) {
+      setUsingError("This template has no recipient slots.");
+      return;
+    }
+    for (const [index, recipient] of prepared.entries()) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)) {
+        setUsingError(`Enter a valid email address for recipient ${index + 1}.`);
+        return;
+      }
+    }
     setUsingSaving(true);
     setUsingError(null);
     try {
       const result = await apiFetch<{ documentId: string }>(
         `/api/templates/${using.id}/use`,
-        { method: "POST", body: JSON.stringify({ recipients }) },
+        { method: "POST", body: JSON.stringify({ recipients: prepared }) },
       );
       toast({ title: "Draft created", description: "Review the recipients, then send it." });
       router.push(`/app/documents/${result.documentId}`);

@@ -338,6 +338,7 @@ export interface CaseEventRow {
 
 export interface InquirySubmission {
   unitId?: string | null;
+  applicantPhone?: string | null;
   currentAddress: string;
   currentCity?: string | null;
   currentState?: string | null;
@@ -1604,7 +1605,7 @@ export function createInquiry(
     unitId?: string | null;
     applicantName: string;
     applicantEmail: string;
-    applicantPhone: string;
+    applicantPhone?: string | null;
     lawyerNote?: string | null;
     inquiryFeeCents?: number | null;
   },
@@ -1622,6 +1623,7 @@ export function createInquiry(
   const phone = text(input.applicantPhone, 40);
   if (name.length < 2) throw new ValidationError("Enter the applicant's full name.");
   if (!isValidEmail(email)) throw new ValidationError("Enter a valid applicant email address.");
+  if (phone && phone.length < 5) throw new ValidationError("Enter a valid applicant phone number.");
   if (
     input.inquiryFeeCents !== undefined &&
     input.inquiryFeeCents !== null &&
@@ -1765,7 +1767,7 @@ export function updateInquiry(
     inquiryId: string;
     name: string;
     email: string;
-    phone: string;
+    phone?: string | null;
     unitId?: string | null;
     lawyerNote?: string | null;
     inquiryFeeCents?: number | null;
@@ -1796,7 +1798,7 @@ export function updateInquiry(
   const phone = text(input.phone, 40);
   if (name.length < 2) throw new ValidationError("Enter the applicant's full name.");
   if (!isValidEmail(email)) throw new ValidationError("Enter a valid applicant email address.");
-  if (phone.length < 5) throw new ValidationError("Enter an applicant phone number.");
+  if (phone && phone.length < 5) throw new ValidationError("Enter a valid applicant phone number.");
   let unitId = detail.inquiry.unit_id;
   if (input.unitId !== undefined) {
     if (input.unitId) {
@@ -2010,8 +2012,12 @@ export async function submitInquiry(
   const employmentCategory = text(details.employmentCategory, 120);
   const income = text(details.incomeRange, 80);
   const signatureName = text(details.signatureName, 120);
+  const applicantPhone = text(details.applicantPhone, 40);
   if (currentAddress.length < 5) throw new ValidationError("Enter your current address.");
   if (signatureName.length < 2) throw new ValidationError("Type your full name to confirm the inquiry.");
+  if (applicantPhone && applicantPhone.length < 5) {
+    throw new ValidationError("Enter a valid phone number.");
+  }
   if (details.reasonForMoving && reason.length < 5) throw new ValidationError("Tell us why you are moving.");
   let unitId = inquiry.unit_id;
   if (details.unitId) {
@@ -2099,7 +2105,7 @@ export async function submitInquiry(
   transaction(db, () => {
     const changed = db
       .prepare(
-        `UPDATE inquiries SET unit_id = ?, current_address = ?, current_city = ?, current_state = ?,
+        `UPDATE inquiries SET unit_id = ?, applicant_phone = ?, current_address = ?, current_city = ?, current_state = ?,
            reason_for_moving = ?, marital_status = ?, children_count = ?, employment_status = ?, employer = ?,
            occupation = ?, employment_address = ?, employment_category = ?, income_range = ?, religion_state = ?,
            occupants_count = ?, dependents_count = ?, bedrooms_required = ?, state_of_origin = ?,
@@ -2110,6 +2116,7 @@ export async function submitInquiry(
       )
       .run(
         unitId,
+        applicantPhone,
         currentAddress,
         isoOrNull(details.currentCity),
         isoOrNull(details.currentState),
@@ -3192,7 +3199,7 @@ export function getInquirySummaryPdf(
     landlordEmail: input.landlord.email,
     applicantName: input.inquiry.applicant_name,
     applicantEmail: input.inquiry.applicant_email,
-    applicantPhone: input.inquiry.applicant_phone,
+    applicantPhone: input.inquiry.applicant_phone === "-" ? "" : input.inquiry.applicant_phone,
     currentAddress: input.inquiry.current_address,
     currentCity: input.inquiry.current_city,
     currentState: input.inquiry.current_state,

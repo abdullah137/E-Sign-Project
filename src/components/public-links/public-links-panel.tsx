@@ -74,6 +74,19 @@ export function PublicLinksPanel({
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!templateId) {
+      setError("Choose the template this link should use.");
+      return;
+    }
+    if (name.trim().length < 2) {
+      setError("Enter a name for the link.");
+      return;
+    }
+    const expiresInDays = Number(days);
+    if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 90) {
+      setError("Choose an expiry between 1 and 90 days.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -82,7 +95,7 @@ export function PublicLinksPanel({
         body: JSON.stringify({
           templateId,
           name: name.trim(),
-          expiresInDays: Number(days),
+          expiresInDays,
         }),
       });
       setCreated(result.link);

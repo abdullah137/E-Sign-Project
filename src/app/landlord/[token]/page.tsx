@@ -76,7 +76,7 @@ export default async function LandlordReviewPage({ params }: { params: Promise<{
             rentLabel={`${formatMoney(unit?.rent_amount_cents ?? property.rent_amount_cents)} per year`}
             applicantName={inquiry.applicant_name}
             applicantEmail={inquiry.applicant_email}
-            applicantPhone={inquiry.applicant_phone}
+            applicantPhone={inquiry.applicant_phone === "-" ? "" : inquiry.applicant_phone}
             currentAddress={inquiry.current_address}
             reasonForMoving={inquiry.reason_for_moving}
             maritalStatus={inquiry.marital_status}

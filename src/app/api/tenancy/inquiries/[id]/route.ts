@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   applicantName: z.string().trim().min(2).max(120),
   applicantEmail: z.string().trim().email().max(254),
-  applicantPhone: z.string().trim().min(5).max(40),
+  applicantPhone: z.string().trim().max(40).optional().default(""),
   unitId: z.string().trim().max(80).optional().nullable(),
   lawyerNote: z.string().trim().max(1000).optional().nullable(),
   inquiryFeeCents: z.number().int().min(0).max(100_000_000).optional(),

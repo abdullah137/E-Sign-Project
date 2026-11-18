@@ -61,7 +61,11 @@ export function assertSameOrigin(request: Request): void {
 
 export function handleRouteError(error: unknown): NextResponse {
   if (error instanceof ZodError) {
-    return apiError("Please check the highlighted fields.", 422, "validation_error");
+    const flattened = error.flatten();
+    return apiError("Please check the highlighted fields.", 422, "validation_error", {
+      fieldErrors: flattened.fieldErrors,
+      formErrors: flattened.formErrors,
+    });
   }
   if (error instanceof DomainError) {
     return apiError(error.message, error.status, error.code, error.details);

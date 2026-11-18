@@ -348,8 +348,16 @@ export function PrepareEditor({
       setRecipientError("Enter the recipient's name.");
       return;
     }
+    if (newName.trim().length > 100) {
+      setRecipientError("The recipient name must be 100 characters or fewer.");
+      return;
+    }
     if (!isValidEmail(newEmail)) {
       setRecipientError("Enter a valid email address.");
+      return;
+    }
+    if (newEmail.trim().length > 254) {
+      setRecipientError("That email address is too long.");
       return;
     }
     if (recipientLimit !== null && recipients.length >= recipientLimit) {

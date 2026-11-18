@@ -163,6 +163,39 @@ export function TenantInquiryForm({
       setError("Please confirm the declarations before submitting.");
       return;
     }
+    if (form.applicantPhone.trim().length < 5) {
+      setError("Enter a valid phone number.");
+      return;
+    }
+    if (form.currentAddress.trim().length < 5) {
+      setError("Enter your current address.");
+      return;
+    }
+    if (form.reasonForMoving && form.reasonForMoving.trim().length < 5) {
+      setError("Tell us why you are moving.");
+      return;
+    }
+    if (form.signatureName.trim().length < 2) {
+      setError("Type your full name to confirm the inquiry.");
+      return;
+    }
+    const activeGuarantors = guarantors.filter(
+      (guarantor) => guarantor.name.trim() || guarantor.email.trim(),
+    );
+    for (const guarantor of activeGuarantors) {
+      if (guarantor.name.trim().length < 2) {
+        setError("Enter each guarantor's full name.");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guarantor.email.trim())) {
+        setError("Enter a valid email address for each guarantor.");
+        return;
+      }
+      if (!guarantor.relationship) {
+        setError("Select each guarantor's relationship to you.");
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const employed = EMPLOYED_STATUSES.includes(form.employmentStatus);
@@ -174,7 +207,8 @@ export function TenantInquiryForm({
         method: "POST",
         body: JSON.stringify({
           unitId: form.unitId || null,
-          currentAddress: form.currentAddress,
+          applicantPhone: form.applicantPhone.trim(),
+          currentAddress: form.currentAddress.trim(),
           currentCity: form.currentCity || null,
           currentState: form.currentState || null,
           stateOfOrigin: form.stateOfOrigin || null,
@@ -188,9 +222,9 @@ export function TenantInquiryForm({
           reasonForMoving: form.reasonForMoving || null,
           additionalInfo: form.additionalInfo || null,
           declarationAccepted: true,
-          signatureName: form.signatureName,
+          signatureName: form.signatureName.trim(),
           passportPhoto: passport?.dataUrl ?? "",
-          guarantors: guarantors.filter((guarantor) => guarantor.name || guarantor.email),
+          guarantors: activeGuarantors,
         }),
       });
       setSubmitted(true);
@@ -285,8 +319,19 @@ export function TenantInquiryForm({
       </div>
 
       <Section title="Your details" description="Contact details used for this application.">
-        <FormField label="Full name" htmlFor="applicantName" required>
-          <Input id="applicantName" value={form.applicantName} onChange={update("applicantName")} required />
+        <FormField
+          label="Full name"
+          htmlFor="applicantName"
+          required
+          hint="Set by the office that sent this form. Contact them if it needs correcting."
+        >
+          <Input
+            id="applicantName"
+            value={form.applicantName}
+            readOnly
+            aria-readonly="true"
+            className="bg-surface-subtle"
+          />
         </FormField>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField label="Email" htmlFor="applicantEmail" required>
@@ -294,8 +339,9 @@ export function TenantInquiryForm({
               id="applicantEmail"
               type="email"
               value={form.applicantEmail}
-              onChange={update("applicantEmail")}
-              required
+              readOnly
+              aria-readonly="true"
+              className="bg-surface-subtle"
             />
           </FormField>
           <FormField label="Phone" htmlFor="applicantPhone" required>

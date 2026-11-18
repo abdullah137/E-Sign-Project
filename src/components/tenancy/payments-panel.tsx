@@ -60,6 +60,19 @@ export function PaymentsPanel({
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
+    const amount = Number(form.amount);
+    if (form.description.trim().length < 2) {
+      setError("Enter a short description for the payment.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0.01 || amount > 1_000_000) {
+      setError("Enter an amount between ₦0.01 and ₦1,000,000.");
+      return;
+    }
+    if (!form.dueDate) {
+      setError("Choose the payment due date.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -67,8 +80,8 @@ export function PaymentsPanel({
         method: "POST",
         body: JSON.stringify({
           agreementId: form.agreementId || null,
-          description: form.description,
-          amountCents: Math.round(Number(form.amount) * 100),
+          description: form.description.trim(),
+          amountCents: Math.round(amount * 100),
           dueDate: form.dueDate,
         }),
       });
@@ -121,14 +134,27 @@ export function PaymentsPanel({
   const saveEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing) return;
+    const amount = Number(editForm.amount);
+    if (editForm.description.trim().length < 2) {
+      setEditError("Enter a short description for the payment.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0.01 || amount > 1_000_000) {
+      setEditError("Enter an amount between ₦0.01 and ₦1,000,000.");
+      return;
+    }
+    if (!editForm.dueDate) {
+      setEditError("Choose the payment due date.");
+      return;
+    }
     setSaving(true);
     setEditError(null);
     try {
       await apiFetch(`/api/tenancy/payments/${editing.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          description: editForm.description,
-          amountCents: Math.round(Number(editForm.amount) * 100),
+          description: editForm.description.trim(),
+          amountCents: Math.round(amount * 100),
           dueDate: editForm.dueDate,
         }),
       });
@@ -279,6 +305,7 @@ export function PaymentsPanel({
               value={form.description}
               onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
               placeholder="November rent"
+              maxLength={160}
               required
               data-autofocus
             />
@@ -381,6 +408,7 @@ export function PaymentsPanel({
               id="payment-edit-description"
               value={editForm.description}
               onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+              maxLength={160}
               required
             />
           </FormField>

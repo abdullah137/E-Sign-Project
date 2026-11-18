@@ -197,26 +197,52 @@ export function PropertiesPanel({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSaving(true);
-    setError(null);
     const inquiryFee = Number(form.inquiryFee);
-    if (form.inquiryFee !== "" && (!Number.isInteger(inquiryFee) || inquiryFee < 0)) {
-      setError("Enter the inquiry fee as a whole number.");
-      setSaving(false);
+    if (!form.landlordId) {
+      setError("Choose the landlord for this property.");
       return;
     }
+    if (form.name.trim().length < 2) {
+      setError("Enter the property name.");
+      return;
+    }
+    if (form.category.trim().length < 2) {
+      setError("Enter the property category.");
+      return;
+    }
+    if (form.propertyType.trim().length < 2) {
+      setError("Enter the property type.");
+      return;
+    }
+    if (form.addressLine1.trim().length < 3) {
+      setError("Enter the street address.");
+      return;
+    }
+    if (!form.city.trim() || !form.state.trim()) {
+      setError("Enter the city and state.");
+      return;
+    }
+    if (
+      form.inquiryFee !== "" &&
+      (!Number.isInteger(inquiryFee) || inquiryFee < 0 || inquiryFee > 1_000_000)
+    ) {
+      setError("Enter an inquiry fee between ₦0 and ₦1,000,000.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
     const unitTotal = Math.max(0, Math.min(100, Math.round(Number(form.unitCount || 0))));
     const payload = {
       landlordId: form.landlordId,
-      reference: form.reference || null,
-      name: form.name,
-      category: form.category,
-      propertyType: form.propertyType,
+      reference: form.reference.trim() || null,
+      name: form.name.trim(),
+      category: form.category.trim(),
+      propertyType: form.propertyType.trim(),
       listingType: form.listingType,
-      addressLine1: form.addressLine1,
-      city: form.city,
-      state: form.state,
-      postalCode: form.postalCode || null,
+      addressLine1: form.addressLine1.trim(),
+      city: form.city.trim(),
+      state: form.state.trim(),
+      postalCode: form.postalCode.trim() || null,
       inquiryFeeCents:
         Number.isFinite(inquiryFee) && inquiryFee > 0 ? Math.round(inquiryFee * 100) : 0,
       status: form.status,
@@ -499,7 +525,7 @@ export function PropertiesPanel({
             </Select>
           </FormField>
           <FormField label="Property name" htmlFor="property-name" required>
-            <Input id="property-name" value={form.name} onChange={update("name")} required />
+            <Input id="property-name" value={form.name} onChange={update("name")} maxLength={120} required />
           </FormField>
           <FormField label="Category" htmlFor="property-category" required>
             <Select
@@ -567,16 +593,22 @@ export function PropertiesPanel({
             />
           </FormField>
           <FormField label="Address" htmlFor="property-address" required className="sm:col-span-2">
-            <Input id="property-address" value={form.addressLine1} onChange={update("addressLine1")} required />
+            <Input
+              id="property-address"
+              value={form.addressLine1}
+              onChange={update("addressLine1")}
+              maxLength={200}
+              required
+            />
           </FormField>
           <FormField label="City" htmlFor="property-city" required>
-            <Input id="property-city" value={form.city} onChange={update("city")} required />
+            <Input id="property-city" value={form.city} onChange={update("city")} maxLength={80} required />
           </FormField>
           <FormField label="State or region" htmlFor="property-state" required>
-            <Input id="property-state" value={form.state} onChange={update("state")} required />
+            <Input id="property-state" value={form.state} onChange={update("state")} maxLength={80} required />
           </FormField>
           <FormField label="Postal code" htmlFor="property-postal">
-            <Input id="property-postal" value={form.postalCode} onChange={update("postalCode")} />
+            <Input id="property-postal" value={form.postalCode} onChange={update("postalCode")} maxLength={20} />
           </FormField>
           <FormField label="Status" htmlFor="property-status">
             <Select id="property-status" value={form.status} onChange={update("status")}>
@@ -649,10 +681,22 @@ function UnitFields({
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <FormField label="Unit name or number" htmlFor={`${idPrefix}-number`} required className="sm:col-span-2">
-        <Input id={`${idPrefix}-number`} value={form.unitNumber} onChange={update("unitNumber")} required />
+        <Input
+          id={`${idPrefix}-number`}
+          value={form.unitNumber}
+          onChange={update("unitNumber")}
+          maxLength={40}
+          required
+        />
       </FormField>
       <FormField label="Unit type" htmlFor={`${idPrefix}-type`} required>
-        <Input id={`${idPrefix}-type`} value={form.unitType} onChange={update("unitType")} required />
+        <Input
+          id={`${idPrefix}-type`}
+          value={form.unitType}
+          onChange={update("unitType")}
+          maxLength={60}
+          required
+        />
       </FormField>
       <FormField label="Occupancy" htmlFor={`${idPrefix}-occupancy`}>
         <Select id={`${idPrefix}-occupancy`} value={form.occupancyStatus} onChange={update("occupancyStatus")}>
@@ -777,15 +821,19 @@ function UnitsModal({
       setError("Enter a unit name or number.");
       return;
     }
-    if (!Number.isInteger(rent) || rent < 0) {
-      setError("Enter the yearly rent as a whole number.");
+    if (form.unitType.trim().length < 2) {
+      setError("Enter a unit type, for example Flat, Duplex or Shop.");
+      return;
+    }
+    if (!Number.isInteger(rent) || rent < 0 || rent > 1_000_000) {
+      setError("Enter a yearly rent between ₦0 and ₦1,000,000.");
       return;
     }
     setSaving(true);
     setError(null);
     const payload = {
-      unitNumber: form.unitNumber,
-      unitType: form.unitType,
+      unitNumber: form.unitNumber.trim(),
+      unitType: form.unitType.trim(),
       bedrooms: Math.round(Number(form.bedrooms || 0)),
       bathrooms: Math.round(Number(form.bathrooms || 0)),
       toilets: Math.round(Number(form.toilets || 0)),
@@ -1025,8 +1073,12 @@ function UnitSetupWizard({
       setError("Enter a unit name or number.");
       return;
     }
-    if (!Number.isInteger(rent) || rent < 0) {
-      setError("Enter the yearly rent as a whole number.");
+    if (form.unitType.trim().length < 2) {
+      setError("Enter a unit type, for example Flat, Duplex or Shop.");
+      return;
+    }
+    if (!Number.isInteger(rent) || rent < 0 || rent > 1_000_000) {
+      setError("Enter a yearly rent between ₦0 and ₦1,000,000.");
       return;
     }
     setSaving(true);
@@ -1036,8 +1088,8 @@ function UnitSetupWizard({
         method: "POST",
         body: JSON.stringify({
           propertyId: wizard.propertyId,
-          unitNumber: form.unitNumber,
-          unitType: form.unitType,
+          unitNumber: form.unitNumber.trim(),
+          unitType: form.unitType.trim(),
           bedrooms: Math.round(Number(form.bedrooms || 0)),
           bathrooms: Math.round(Number(form.bathrooms || 0)),
           toilets: Math.round(Number(form.toilets || 0)),

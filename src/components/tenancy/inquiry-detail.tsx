@@ -103,7 +103,7 @@ export function InquiryDetail({
   const [editForm, setEditForm] = useState({
     applicantName: inquiry.applicant_name,
     applicantEmail: inquiry.applicant_email,
-    applicantPhone: inquiry.applicant_phone,
+    applicantPhone: storedPhone(inquiry.applicant_phone),
     unitId: inquiry.unit_id ?? "",
     lawyerNote: inquiry.lawyer_note ?? "",
     inquiryFee: nairaInput(inquiry.inquiry_fee_cents ?? property.defaultInquiryFeeCents),
@@ -175,8 +175,24 @@ export function InquiryDetail({
 
   const createAgreement = async (event: React.FormEvent) => {
     event.preventDefault();
-    setAgreementSaving(true);
     setAgreementError(null);
+    if (!agreementForm.precedentId) {
+      setAgreementError(
+        precedents.length
+          ? "Choose the precedent to use for this agreement."
+          : "Add a precedent document in Templates before preparing an agreement.",
+      );
+      return;
+    }
+    if (!agreementForm.startDate || !agreementForm.endDate) {
+      setAgreementError("Choose both the tenancy start and end dates.");
+      return;
+    }
+    if (agreementForm.endDate < agreementForm.startDate) {
+      setAgreementError("The end date must be on or after the start date.");
+      return;
+    }
+    setAgreementSaving(true);
     try {
       const result = await apiFetch<{ redirect: string }>("/api/tenancy/agreements", {
         method: "POST",
@@ -199,6 +215,19 @@ export function InquiryDetail({
   const saveEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     const feeNaira = Number(editForm.inquiryFee);
+    const phone = editForm.applicantPhone.trim();
+    if (editForm.applicantName.trim().length < 2) {
+      setEditError("Enter the applicant's full name.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.applicantEmail.trim())) {
+      setEditError("Enter a valid email address.");
+      return;
+    }
+    if (phone && phone.length < 5) {
+      setEditError("Enter a valid phone number, or leave the field blank.");
+      return;
+    }
     if (
       inquiry.status === "DRAFT" &&
       (!Number.isFinite(feeNaira) || feeNaira < 0 || feeNaira > 1_000_000)
@@ -212,9 +241,9 @@ export function InquiryDetail({
       await apiFetch(`/api/tenancy/inquiries/${inquiry.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          applicantName: editForm.applicantName,
-          applicantEmail: editForm.applicantEmail,
-          applicantPhone: editForm.applicantPhone,
+          applicantName: editForm.applicantName.trim(),
+          applicantEmail: editForm.applicantEmail.trim(),
+          applicantPhone: phone,
           unitId: editForm.unitId || null,
           lawyerNote: editForm.lawyerNote || null,
           ...(inquiry.status === "DRAFT"
@@ -288,7 +317,7 @@ export function InquiryDetail({
                   setEditForm({
                     applicantName: inquiry.applicant_name,
                     applicantEmail: inquiry.applicant_email,
-                    applicantPhone: inquiry.applicant_phone,
+                    applicantPhone: storedPhone(inquiry.applicant_phone),
                     unitId: inquiry.unit_id ?? "",
                     lawyerNote: inquiry.lawyer_note ?? "",
                     inquiryFee: nairaInput(inquiry.inquiry_fee_cents ?? property.defaultInquiryFeeCents),
@@ -485,7 +514,7 @@ export function InquiryDetail({
             <dl className="mt-4 grid gap-4 text-[13px] sm:grid-cols-2">
               <Item label="Full name" value={inquiry.applicant_name} />
               <Item label="Email" value={inquiry.applicant_email} />
-              <Item label="Phone" value={inquiry.applicant_phone || "Not provided"} />
+              <Item label="Phone" value={storedPhone(inquiry.applicant_phone) || "Not provided"} />
               <Item label="Current address" value={inquiry.current_address || "Not provided"} />
               <Item label="Reason for moving" value={inquiry.reason_for_moving || "Not provided"} />
               <Item label="Marital status" value={inquiry.marital_status || "Not provided"} />
@@ -716,7 +745,7 @@ export function InquiryDetail({
             <Button type="button" variant="secondary" onClick={() => setAgreementOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" form="agreement-form" loading={agreementSaving}>
+            <Button type="submit" form="agreement-form" loading={agreementSaving} disabled={!precedents.length}>
               Prepare agreement
             </Button>
           </div>
@@ -724,18 +753,27 @@ export function InquiryDetail({
       >
         <form id="agreement-form" onSubmit={createAgreement} className="grid gap-4 sm:grid-cols-2">
           <FormField label="Precedent" htmlFor="agreement-precedent" required className="sm:col-span-2">
-            <Select
-              id="agreement-precedent"
-              value={agreementForm.precedentId}
-              onChange={(event) => setAgreementForm((current) => ({ ...current, precedentId: event.target.value }))}
-              required
-            >
-              {precedents.map((precedent) => (
-                <option key={precedent.id} value={precedent.id}>
-                  {precedent.title} — {precedent.category}
-                </option>
-              ))}
-            </Select>
+            {precedents.length ? (
+              <Select
+                id="agreement-precedent"
+                value={agreementForm.precedentId}
+                onChange={(event) =>
+                  setAgreementForm((current) => ({ ...current, precedentId: event.target.value }))
+                }
+                required
+              >
+                {precedents.map((precedent) => (
+                  <option key={precedent.id} value={precedent.id}>
+                    {precedent.title} — {precedent.category}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <p className="rounded border border-hairline bg-surface-subtle/60 px-4 py-3 text-[12.5px] leading-5 text-slate">
+                No precedents are available yet. Add an agreement precedent in Templates, then come back to
+                prepare this agreement.
+              </p>
+            )}
           </FormField>
           <FormField label="Start date" htmlFor="agreement-start" required>
             <Input
@@ -801,6 +839,7 @@ export function InquiryDetail({
               id="edit-name"
               value={editForm.applicantName}
               onChange={(event) => setEditForm((current) => ({ ...current, applicantName: event.target.value }))}
+              maxLength={120}
               required
             />
           </FormField>
@@ -810,15 +849,16 @@ export function InquiryDetail({
               type="email"
               value={editForm.applicantEmail}
               onChange={(event) => setEditForm((current) => ({ ...current, applicantEmail: event.target.value }))}
+              maxLength={254}
               required
             />
           </FormField>
-          <FormField label="Phone" htmlFor="edit-phone" required>
+          <FormField label="Phone" htmlFor="edit-phone" hint="Optional. Leave blank if you do not have it.">
             <Input
               id="edit-phone"
               value={editForm.applicantPhone}
               onChange={(event) => setEditForm((current) => ({ ...current, applicantPhone: event.target.value }))}
-              required
+              maxLength={40}
             />
           </FormField>
           <FormField label="Unit or flat" htmlFor="edit-unit">
@@ -887,6 +927,11 @@ function Item({ label, value }: { label: string; value: string }) {
 
 function nairaInput(cents: number): string {
   return String(Math.round(cents / 100));
+}
+
+function storedPhone(value: string | null | undefined): string {
+  const phone = (value ?? "").trim();
+  return phone === "-" ? "" : phone;
 }
 
 function commentFromMetadata(raw: string): string | null {  try {
